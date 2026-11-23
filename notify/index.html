@@ -23,7 +23,7 @@
     .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:8px 11px; font-size:12.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
     .code-box { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; color:#34d399; margin:10px 0 8px 0; height:84px; resize:none; }
     .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
-    .item { border-bottom:1px solid var(--border); padding:13px 0; }
+    .item { border-bottom:1px solid var(--border); padding:13px 0; cursor:pointer; }
     .item:last-child { border-bottom:none; }
     .item.featured { background:rgba(16,185,129,0.08); border:1px solid rgba(52,211,153,0.32); border-radius:14px; padding:14px; margin-bottom:10px; }
     .item.featured.is-approval { background:rgba(245,158,11,0.11); border-color:rgba(245,158,11,0.45); }
@@ -60,7 +60,7 @@
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <strong style="font-size:14px;">최근 도착한 개인 알림</strong>
+      <strong style="font-size:14px;">최근 도착한 개인 알림 (카드를 누르면 바로 그 대화창으로 이동)</strong>
       <span id="countLbl" style="font-size:12px;color:#94a3b8;">0건</span>
     </div>
     <div id="listBox"><p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p></div>
@@ -69,21 +69,57 @@
   <script>
     const DB_NAME = 'obsidian_personal_notify_db';
     const STORE = 'items';
-    const DEEP_SCHEME = 'obsidian://open';
     let focusedItemId = '';
+    let pendingAutoLaunch = false;
 
     function readFocusHash() {
-      const m = String(location.hash || '').match(/focus=([^&]+)/);
+      const h = String(location.hash || '');
+      const m = h.match(/focus=([^&]+)/);
       focusedItemId = m ? decodeURIComponent(m[1]) : '';
+      if (h.includes('autolaunch=1')) {
+        pendingAutoLaunch = true;
+        try { history.replaceState(null, '', location.pathname + (focusedItemId ? '#focus=' + encodeURIComponent(focusedItemId) : '')); } catch (_) {}
+      }
     }
     readFocusHash();
     window.addEventListener('hashchange', () => { readFocusHash(); renderItems(); });
 
+    function isChatNotificationItem(it) {
+      const ak = String(it.actionKind || '');
+      const ch = String(it.channel || '');
+      const np = String(it.notePath || '');
+      if (ak === 'luki-chat' || ak === 'approval') return true;
+      if (ch.includes('루키') && !ch.includes('식탁')) return true;
+      if (np.includes('/대화록/') || np.startsWith('대화록/') || /시\s*\d+분부로 시작한 대화/.test(np)) return true;
+      return false;
+    }
+
+    function isTableNotificationItem(it) {
+      const ak = String(it.actionKind || '');
+      const ch = String(it.channel || '');
+      const np = String(it.notePath || '');
+      return ak === 'luki-table' || Boolean(it.roomId) || ch.includes('식탁') || np.includes('루키의 식탁/');
+    }
+
     function buildObsidianDeepLink(it) {
-      const params = [];
-      if (it.vault) params.push('vault=' + encodeURIComponent(it.vault));
-      if (it.notePath) params.push('file=' + encodeURIComponent(it.notePath));
-      return params.length > 0 ? (DEEP_SCHEME + '?' + params.join('&')) : DEEP_SCHEME;
+      if (isTableNotificationItem(it)) {
+        const qp = [];
+        if (it.vault) qp.push('vault=' + encodeURIComponent(it.vault));
+        if (it.roomId) qp.push('room=' + encodeURIComponent(it.roomId));
+        if (it.msgId) qp.push('msg=' + encodeURIComponent(it.msgId));
+        if (it.notePath) qp.push('note=' + encodeURIComponent(it.notePath));
+        return 'obsidian://luki-table' + (qp.length ? ('?' + qp.join('&')) : '');
+      }
+      if (isChatNotificationItem(it) || it.notePath || it.actionKind === 'approval') {
+        const qp = [];
+        if (it.vault) qp.push('vault=' + encodeURIComponent(it.vault));
+        if (it.actionKind) qp.push('actionKind=' + encodeURIComponent(it.actionKind));
+        else if (isChatNotificationItem(it)) qp.push('actionKind=luki-chat');
+        if (it.channel) qp.push('channel=' + encodeURIComponent(it.channel));
+        if (it.notePath) qp.push('note=' + encodeURIComponent(it.notePath));
+        return 'obsidian://notify-hub-open' + (qp.length ? ('?' + qp.join('&')) : '');
+      }
+      return it.vault ? ('obsidian://open?vault=' + encodeURIComponent(it.vault)) : 'obsidian://open';
     }
 
     function b64uEncode(bytes) {
@@ -174,10 +210,18 @@
         return;
       }
       box.innerHTML = '';
+
+      if (pendingAutoLaunch && items[0]) {
+        pendingAutoLaunch = false;
+        const autoHref = buildObsidianDeepLink(items[0]);
+        setTimeout(() => { try { window.location.href = autoHref; } catch (_) {} }, 60);
+      }
+
       items.forEach((it, idx) => {
         const isTop = idx === 0;
         const isApproval = it.actionKind === 'approval' || String(it.channel || '').includes('승인') || String(it.title || '').includes('승인');
-        const isTable = String(it.channel || '').includes('식탁') || String(it.notePath || '').includes('루키의 식탁/');
+        const isTable = isTableNotificationItem(it);
+        const isChat = !isTable && isChatNotificationItem(it);
         const div = document.createElement('div');
         div.className = 'item' + (isTop ? ' featured' : '') + (isApproval ? ' is-approval' : '');
 
@@ -207,31 +251,39 @@
 
         const openLink = document.createElement('a');
         openLink.href = deepHref;
+        let mainLabel = '📲 옵시디언 바로 열기';
+        if (isApproval) {
+          mainLabel = '🔐 옵시디언 바로 그 대화창으로 돌아가 승인하기';
+        } else if (isTable) {
+          mainLabel = '🍽️ 옵시디언의 바로 그 식탁 대화창 열기';
+        } else if (isChat) {
+          mainLabel = '💬 옵시디언의 바로 그 루키 대화창 열기';
+        } else if (it.notePath) {
+          mainLabel = '📖 옵시디언에서 해당 노트 바로 열기';
+        }
+
         if (isTop) {
           openLink.className = 'btn' + (isApproval ? ' amber' : '');
-          if (isApproval) {
-            openLink.textContent = '🔐 옵시디언으로 돌아가 바로 승인하기';
-          } else if (it.notePath) {
-            openLink.textContent = '📲 옵시디언에서 해당 노트 바로 열기';
-          } else {
-            openLink.textContent = '📲 옵시디언 바로 열기';
-          }
+          openLink.textContent = mainLabel;
         } else {
           openLink.className = 'btn-sec';
           openLink.style.width = '100%';
-          openLink.textContent = it.notePath ? '📖 옵시디언에서 해당 노트 열기' : '📲 옵시디언 열기';
+          openLink.textContent = mainLabel;
         }
+        openLink.onclick = (ev) => ev.stopPropagation();
         ctaWrap.appendChild(openLink);
 
         if (isTable) {
           const tableWebLink = document.createElement('a');
-          tableWebLink.href = '../table/';
+          tableWebLink.href = '../table/' + (it.roomId ? ('#room=' + encodeURIComponent(it.roomId)) : '');
           tableWebLink.className = 'btn-sec';
           tableWebLink.style.width = '100%';
-          tableWebLink.textContent = '🍽️ 모바일 식탁 웹앱으로 바로 가기';
+          tableWebLink.textContent = '📱 모바일 식탁 웹앱 대화창으로 열기';
+          tableWebLink.onclick = (ev) => ev.stopPropagation();
           ctaWrap.appendChild(tableWebLink);
         }
 
+        div.onclick = () => { window.location.href = deepHref; };
         div.appendChild(ctaWrap);
         box.appendChild(div);
       });
@@ -272,46 +324,46 @@
         await navigator.serviceWorker.ready;
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
-          alert('알림 권한이 허용되지 않았습니다. 기기 설정에서 알림을 허용해 주세요.');
+          alert('알림 권한을 허용해 주셔야 잠금화면 알림을 받을 수 있습니다.');
           return;
         }
         const vapid = await getOrCreateLocalVapidKeys();
         let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: b64uDecode(vapid.publicKey)
-          });
+        if (sub) {
+          try { await sub.unsubscribe(); } catch (_) {}
         }
-        const subJson = sub.toJSON();
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: b64uDecode(vapid.publicKey)
+        });
         const bundle = {
           v: 1,
-          label: navigator.platform || '내 스마트폰',
-          subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+          label: (navigator.platform || '모바일') + ' 개인알림',
+          subscription: sub.toJSON(),
           vapid
         };
-        const code = 'ONH1:' + b64uEncode(new TextEncoder().encode(JSON.stringify(bundle)));
-        localStorage.setItem('onh_pairing_code', code);
-        latestPairingCode = code;
-        document.getElementById('pairCodeBox').value = code;
+        latestPairingCode = 'ONH1:' + b64uEncode(new TextEncoder().encode(JSON.stringify(bundle)));
+        localStorage.setItem('onh_pairing_code', latestPairingCode);
+        document.getElementById('pairCodeBox').value = latestPairingCode;
         document.getElementById('codeWrap').style.display = 'block';
-        await copyTextBulletproof(code);
-      } catch (err) {
-        alert('연결 코드 생성 오류: ' + (err.message || err));
+        await copyTextBulletproof(latestPairingCode);
+      } catch (e) {
+        alert('코드 발급 오류: ' + (e.message || e));
       }
     };
 
-    document.getElementById('oneTapObsBtn').onclick = () => {
+    document.getElementById('oneTapObsBtn').onclick = async () => {
       if (!latestPairingCode) return;
-      location.href = 'obsidian://notify-hub-pair?code=' + encodeURIComponent(latestPairingCode);
+      await copyTextBulletproof(latestPairingCode);
+      window.location.href = 'obsidian://notify-hub-pair?code=' + encodeURIComponent(latestPairingCode);
     };
 
     document.getElementById('copyCodeBtn').onclick = async () => {
       if (!latestPairingCode) return;
       const ok = await copyTextBulletproof(latestPairingCode);
-      const b = document.getElementById('copyCodeBtn');
-      b.textContent = ok ? '✅ 복사 완료!' : '위 상자를 길게 눌러 복사하세요';
-      setTimeout(() => { b.textContent = '📋 연결 코드 복사'; }, 2200);
+      const btn = document.getElementById('copyCodeBtn');
+      btn.textContent = ok ? '✅ 복사 완료!' : '위 상자를 길게 눌러 복사';
+      setTimeout(() => { btn.textContent = '📋 연결 코드 복사'; }, 2000);
     };
 
     document.getElementById('shareCodeBtn').onclick = async () => {
@@ -320,16 +372,19 @@
         try { await navigator.share({ text: latestPairingCode }); return; } catch (_) {}
       }
       await copyTextBulletproof(latestPairingCode);
-      alert('연결 코드를 복사했습니다. 맥북이나 PC로 붙여넣어 주세요.');
+      alert('연결 코드를 클립보드에 복사했습니다.');
     };
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
-        if (ev.data && ev.data.type === 'FOCUS_ITEM' && ev.data.item?.id) {
-          focusedItemId = ev.data.item.id;
+        if (ev.data?.type === 'FOCUS_ITEM') {
+          focusedItemId = ev.data.item?.id || 'latest';
+          pendingAutoLaunch = Boolean(ev.data.autolaunch);
+          renderItems();
+        } else if (ev.data?.type === 'NEW_PERSONAL_NOTIFY') {
+          renderItems();
         }
-        renderItems();
       });
     }
     renderItems();
