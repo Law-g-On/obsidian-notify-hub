@@ -1,3 +1,4 @@
+// Luki's Table Static PWA Service Worker v1.1.4
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (ev) => ev.waitUntil(self.clients.claim()));
 
