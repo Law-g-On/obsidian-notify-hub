@@ -1,6 +1,6 @@
 {
-  "name": "Obsidian 개인 알림함",
-  "short_name": "개인 알림함",
+  "name": "루키 알림함",
+  "short_name": "루키 알림함",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
