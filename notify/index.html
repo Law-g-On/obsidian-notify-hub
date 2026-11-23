@@ -5,72 +5,131 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="개인 알림함">
+  <meta name="apple-mobile-web-app-title" content="루키 알림함">
+  <meta name="application-name" content="루키 알림함">
   <meta name="theme-color" content="#0b0d13">
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon.svg">
-  <title>🔔 옵시디언 개인 알림함</title>
+  <title>🪶 루키 알림함</title>
   <style>
-    :root { --bg:#0b0d13; --card:#161b26; --border:rgba(255,255,255,0.09); --accent:#10b981; --amber:#f59e0b; --text:#f8fafc; --muted:#94a3b8; }
+    :root { --bg:#0b0d13; --card:#161b26; --border:rgba(255,255,255,0.09); --accent:#10b981; --amber:#f59e0b; --danger:#ef4444; --pin:#38bdf8; --text:#f8fafc; --muted:#94a3b8; }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-    body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; padding:calc(env(safe-area-inset-top,16px) + 12px) 16px 40px 16px; max-width:520px; margin-inline:auto; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; padding:calc(env(safe-area-inset-top,16px) + 12px) 16px 76px 16px; max-width:520px; margin-inline:auto; overflow-x:hidden; }
     .hdr { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px; }
-    .hdr h1 { font-size:18px; margin:0; }
+    .hdr h1 { font-size:18.5px; margin:0; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
     .hdr-actions { display:flex; gap:6px; align-items:center; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
-    .btn { background:var(--accent); color:#042f2e; font-weight:800; border:none; border-radius:12px; padding:13px 16px; font-size:14.5px; cursor:pointer; width:100%; display:inline-flex; justify-content:center; align-items:center; gap:6px; text-decoration:none; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:15px; margin-bottom:12px; }
+    .btn { background:var(--accent); color:#042f2e; font-weight:800; border:none; border-radius:12px; padding:12px 15px; font-size:14px; cursor:pointer; width:100%; display:inline-flex; justify-content:center; align-items:center; gap:6px; text-decoration:none; }
     .btn.amber { background:var(--amber); color:#291502; }
-    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:8px 11px; font-size:12.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
+    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:7px 11px; font-size:12.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
     .code-box { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; color:#34d399; margin:10px 0 8px 0; height:84px; resize:none; }
     .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
-    .item { border-bottom:1px solid var(--border); padding:13px 0; cursor:pointer; }
-    .item:last-child { border-bottom:none; }
-    .item.featured { background:rgba(16,185,129,0.08); border:1px solid rgba(52,211,153,0.32); border-radius:14px; padding:14px; margin-bottom:10px; }
-    .item.featured.is-approval { background:rgba(245,158,11,0.11); border-color:rgba(245,158,11,0.45); }
-    .meta { font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:5px; }
+    .toolbar-row { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+    .toolbar-left { display:flex; flex-direction:column; gap:3px; }
+    .toolbar-sub { font-size:11.5px; color:var(--muted); }
+    .toolbar-right { display:flex; align-items:center; gap:6px; }
+    .limit-select { background:#0e131d; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 8px; font-size:12px; font-weight:600; outline:none; }
+    .count-pill { font-size:11.5px; color:var(--muted); white-space:nowrap; }
+
+    .swipe-row { position:relative; overflow:hidden; border-radius:14px; margin-bottom:9px; touch-action:pan-y; user-select:none; }
+    .swipe-row:last-child { margin-bottom:0; }
+    .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; border-radius:14px; opacity:0; pointer-events:none; transition:opacity 0.14s ease; font-size:13px; font-weight:700; }
+    .swipe-bg-pin { justify-content:flex-start; padding-left:18px; background:rgba(14,165,233,0.24); border:1px solid rgba(56,189,248,0.42); color:#7dd3fc; }
+    .swipe-bg-del { justify-content:flex-end; padding-right:10px; background:rgba(239,68,68,0.22); border:1px solid rgba(239,68,68,0.45); color:#fecaca; }
+    .swipe-row.is-open-del .swipe-bg-del { opacity:1; pointer-events:auto; }
+    .swipe-del-btn { background:var(--danger); color:#fff; border:none; border-radius:10px; padding:9px 14px; font-size:12.5px; font-weight:800; cursor:pointer; }
+
+    .item { position:relative; z-index:2; background:#121722; border:1px solid var(--border); border-radius:14px; padding:13px 14px; cursor:pointer; transition:transform 0.2s cubic-bezier(0.22,1,0.36,1), opacity 0.18s ease; will-change:transform; }
+    .item.dragging { transition:none; }
+    .item.featured { background:linear-gradient(180deg, rgba(16,185,129,0.13), rgba(18,23,34,0.98)); border-color:rgba(52,211,153,0.38); }
+    .item.is-pinned { background:linear-gradient(180deg, rgba(56,189,248,0.12), rgba(18,23,34,0.98)); border-color:rgba(56,189,248,0.42); }
+    .item.is-approval { background:linear-gradient(180deg, rgba(245,158,11,0.14), rgba(18,23,34,0.98)); border-color:rgba(245,158,11,0.48); }
+
+    .meta { font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; }
+    .meta-left { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+    .meta-right { display:flex; align-items:center; gap:5px; flex-shrink:0; }
     .badge { color:#34d399; font-weight:700; }
     .badge.amber { color:#fbbf24; }
-    .title { font-size:15px; font-weight:700; margin-bottom:5px; line-height:1.35; }
-    .body { font-size:13.5px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; }
-    .cta-wrap { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+    .pin-chip { font-size:10.5px; font-weight:700; color:#7dd3fc; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.35); padding:1px 6px; border-radius:999px; }
+    .icon-btn { background:rgba(255,255,255,0.05); color:var(--muted); border:1px solid rgba(255,255,255,0.09); border-radius:7px; padding:3px 7px; font-size:11.5px; line-height:1.2; cursor:pointer; display:inline-flex; align-items:center; gap:2px; }
+    .icon-btn:hover { color:var(--text); border-color:rgba(255,255,255,0.24); }
+    .icon-btn.active-pin { color:#7dd3fc; background:rgba(56,189,248,0.16); border-color:rgba(56,189,248,0.45); font-weight:700; }
+    .icon-btn.del:hover { color:#fca5a5; border-color:rgba(239,68,68,0.5); }
+
+    .title { font-size:14.8px; font-weight:700; margin-bottom:5px; line-height:1.36; word-break:keep-all; }
+    .body { font-size:13.3px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+    .cta-wrap { margin-top:11px; display:flex; flex-direction:column; gap:7px; }
     .hint { font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 10px 0; }
+
+    .undo-bar { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,12px) + 14px); transform:translateX(-50%) translateY(90px); background:#1e293b; border:1px solid rgba(255,255,255,0.16); color:var(--text); padding:10px 14px; border-radius:12px; display:flex; align-items:center; gap:12px; font-size:13px; box-shadow:0 12px 28px rgba(0,0,0,0.5); z-index:999; opacity:0; pointer-events:none; transition:transform 0.22s ease, opacity 0.22s ease; white-space:nowrap; }
+    .undo-bar.show { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; }
+    .undo-btn { background:transparent; border:none; color:#34d399; font-weight:800; font-size:13px; cursor:pointer; padding:2px 4px; }
   </style>
 </head>
 <body>
   <div class="hdr">
-    <h1>🔔 개인 알림함</h1>
+    <h1>🪶 루키 알림함</h1>
     <div class="hdr-actions">
-      <button class="btn-sec" id="toggleSetupBtn">⚙️ 기기 연결</button>
-      <button class="btn-sec" id="clearAllBtn">비우기</button>
+      <button class="btn-sec" id="toggleSetupBtn" type="button">⚙️ 연결</button>
+      <button class="btn-sec" id="clearAllBtn" type="button">비우기</button>
     </div>
   </div>
 
   <div class="card" id="setupCard" style="display:none;">
-    <p class="hint" id="setupHint">1. 사파리/크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>한 뒤 바탕화면 아이콘으로 여세요.<br>2. 아래 단추로 연결 코드를 발급받은 뒤 <strong>원터치 자동 등록</strong> 또는 <strong>복사·AirDrop</strong>으로 옵시디언에 연결하세요.</p>
-    <button class="btn" id="pairBtn">🔐 알림 켜기 및 기기 연결 코드 발급</button>
+    <p class="hint" id="setupHint">1. 사파리·크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>(맥은 <strong>파일 ➔ Dock에 추가</strong>)한 뒤 앱 아이콘으로 여세요.<br>2. 아래 단추로 연결 코드를 발급받은 뒤 <strong>원터치 자동 등록</strong> 또는 <strong>복사·AirDrop</strong>으로 옵시디언에 연결하세요.</p>
+    <button class="btn" id="pairBtn" type="button">🔐 알림 켜기 및 기기 연결 코드 발급</button>
     <div id="codeWrap" style="display:none;">
       <textarea class="code-box" id="pairCodeBox" readonly onclick="this.focus();this.select();"></textarea>
-      <button class="btn" id="oneTapObsBtn" style="margin-bottom:8px;">📲 이 기기의 옵시디언에 원터치 자동 등록</button>
+      <button class="btn" id="oneTapObsBtn" type="button" style="margin-bottom:8px;">📲 이 기기의 옵시디언에 원터치 자동 등록</button>
       <div class="btn-grid">
-        <button class="btn-sec" id="copyCodeBtn">📋 연결 코드 복사</button>
-        <button class="btn-sec" id="shareCodeBtn">📤 AirDrop·공유 전송</button>
+        <button class="btn-sec" id="copyCodeBtn" type="button">📋 연결 코드 복사</button>
+        <button class="btn-sec" id="shareCodeBtn" type="button">📤 AirDrop·공유 전송</button>
       </div>
     </div>
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <strong style="font-size:14px;">최근 도착한 개인 알림 (카드를 누르면 바로 그 대화창으로 이동)</strong>
-      <span id="countLbl" style="font-size:12px;color:#94a3b8;">0건</span>
+    <div class="toolbar-row">
+      <div class="toolbar-left">
+        <strong style="font-size:14px;">도착한 알림 내역</strong>
+        <span class="toolbar-sub">좌로 밀어 삭제 · 우로 밀어 상단 고정 · 탭하여 대화창 열기</span>
+      </div>
+      <div class="toolbar-right">
+        <select class="limit-select" id="limitSelect" aria-label="최대 보관 개수">
+          <option value="15">최대 15건</option>
+          <option value="30">최대 30건</option>
+          <option value="50">최대 50건</option>
+          <option value="100">최대 100건</option>
+        </select>
+        <span class="count-pill" id="countLbl">0건</span>
+      </div>
     </div>
     <div id="listBox"><p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p></div>
   </div>
 
+  <div class="undo-bar" id="undoBar">
+    <span id="undoMsg">알림을 삭제했습니다.</span>
+    <button class="undo-btn" id="undoBtn" type="button">되돌리기</button>
+  </div>
+
   <script>
     const DB_NAME = 'obsidian_personal_notify_db';
+    const DB_VERSION = 2;
     const STORE = 'items';
+    const META_STORE = 'meta';
+    const DEFAULT_MAX_ITEMS = 30;
+
     let focusedItemId = '';
     let pendingAutoLaunch = false;
+    let suppressClickUntil = 0;
+    let openSwipeRowEl = null;
+    let lastDeletedItem = null;
+    let undoTimer = null;
+
+    function getSavedMaxLimit() {
+      const raw = Number(localStorage.getItem('onh_max_items') || DEFAULT_MAX_ITEMS);
+      return [15, 30, 50, 100].includes(raw) ? raw : DEFAULT_MAX_ITEMS;
+    }
 
     function readFocusHash() {
       const h = String(location.hash || '');
@@ -126,7 +185,7 @@
       let bin = '';
       const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
     function b64uDecode(str) {
       const s = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -174,27 +233,287 @@
       return keys;
     }
 
-    async function openDb() {
+    function openDb() {
       return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+          if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE, { keyPath: 'k' });
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+          const db = req.result;
+          db.onversionchange = () => { try { db.close(); } catch (_) {} };
+          resolve(db);
+        };
         req.onerror = () => reject(req.error);
       });
     }
 
-    async function renderItems() {
-      const db = await openDb();
-      const items = await new Promise((res) => {
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).getAll();
-        req.onsuccess = () => res(req.result || []);
-        req.onerror = () => res([]);
+    async function syncLimitToDb(limitVal) {
+      let db = null;
+      try {
+        db = await openDb();
+        await new Promise((res) => {
+          const tx = db.transaction(META_STORE, 'readwrite');
+          tx.objectStore(META_STORE).put({ k: 'maxItems', v: limitVal });
+          tx.oncomplete = () => res();
+          tx.onerror = () => res();
+        });
+      } catch (_) {
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+    }
+
+    async function fetchAndPruneItems() {
+      const maxLimit = getSavedMaxLimit();
+      let db = null;
+      try {
+        db = await openDb();
+        return await new Promise((res) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          const st = tx.objectStore(STORE);
+          const req = st.getAll();
+          let kept = [];
+          req.onsuccess = () => {
+            const all = Array.isArray(req.result) ? req.result : [];
+            const pinned = all.filter(x => Boolean(x.pinned)).sort((a, b) => ((b.pinnedAt || b.ts || 0) - (a.pinnedAt || a.ts || 0)));
+            const unpinned = all.filter(x => !x.pinned).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+            const allowedUnpinned = Math.max(0, maxLimit - pinned.length);
+            if (unpinned.length > allowedUnpinned) {
+              const overflow = unpinned.slice(allowedUnpinned);
+              for (const oldIt of overflow) {
+                if (oldIt && oldIt.id) st.delete(oldIt.id);
+              }
+              kept = [...pinned, ...unpinned.slice(0, allowedUnpinned)];
+            } else {
+              kept = [...pinned, ...unpinned];
+            }
+          };
+          tx.oncomplete = () => res(kept);
+          tx.onerror = () => res(kept);
+        });
+      } catch (_) {
+        return [];
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+    }
+
+    async function togglePinItem(item) {
+      let db = null;
+      try {
+        db = await openDb();
+        const updated = Object.assign({}, item, {
+          pinned: !item.pinned,
+          pinnedAt: !item.pinned ? Date.now() : 0
+        });
+        await new Promise((res) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put(updated);
+          tx.oncomplete = () => res();
+          tx.onerror = () => res();
+        });
+      } catch (_) {
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+      await renderItems();
+    }
+
+    function showUndoBar(deletedObj) {
+      lastDeletedItem = deletedObj;
+      const bar = document.getElementById('undoBar');
+      document.getElementById('undoMsg').textContent = '알림 1건을 삭제했습니다.';
+      bar.classList.add('show');
+      if (undoTimer) clearTimeout(undoTimer);
+      undoTimer = setTimeout(() => {
+        bar.classList.remove('show');
+        lastDeletedItem = null;
+      }, 4000);
+    }
+
+    async function deleteSingleItem(item) {
+      let db = null;
+      try {
+        db = await openDb();
+        await new Promise((res) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).delete(item.id);
+          tx.oncomplete = () => res();
+          tx.onerror = () => res();
+        });
+        showUndoBar(item);
+      } catch (_) {
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+      await renderItems();
+    }
+
+    document.getElementById('undoBtn').onclick = async () => {
+      if (!lastDeletedItem) return;
+      const restoreTarget = lastDeletedItem;
+      lastDeletedItem = null;
+      document.getElementById('undoBar').classList.remove('show');
+      if (undoTimer) clearTimeout(undoTimer);
+      let db = null;
+      try {
+        db = await openDb();
+        await new Promise((res) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put(restoreTarget);
+          tx.oncomplete = () => res();
+          tx.onerror = () => res();
+        });
+      } catch (_) {
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+      await renderItems();
+    };
+
+    function closeOpenSwipeRow(exceptRow = null) {
+      if (openSwipeRowEl && openSwipeRowEl !== exceptRow) {
+        const prevCard = openSwipeRowEl.querySelector('.item');
+        const prevDelBg = openSwipeRowEl.querySelector('.swipe-bg-del');
+        if (prevCard) prevCard.style.transform = '';
+        if (prevDelBg) prevDelBg.style.opacity = '0';
+        openSwipeRowEl.classList.remove('is-open-del');
+        openSwipeRowEl = null;
+      }
+    }
+
+    function attachSwipeHandlers(rowEl, cardEl, pinBgEl, delBgEl, it) {
+      let startX = 0;
+      let startY = 0;
+      let baseOffset = 0;
+      let currentDx = 0;
+      let tracking = false;
+      let swipingHoriz = false;
+      let axisLocked = false;
+
+      const onStart = (clientX, clientY, targetEl) => {
+        if (targetEl && targetEl.closest('button, select')) return;
+        closeOpenSwipeRow(rowEl);
+        startX = clientX;
+        startY = clientY;
+        baseOffset = rowEl.classList.contains('is-open-del') ? -86 : 0;
+        currentDx = baseOffset;
+        tracking = true;
+        swipingHoriz = false;
+        axisLocked = false;
+      };
+
+      const onMove = (clientX, clientY, ev) => {
+        if (!tracking) return;
+        const rawDx = clientX - startX;
+        const rawDy = clientY - startY;
+        if (!axisLocked) {
+          if (Math.abs(rawDx) < 8 && Math.abs(rawDy) < 8) return;
+          axisLocked = true;
+          swipingHoriz = Math.abs(rawDx) > Math.abs(rawDy) * 1.15;
+          if (swipingHoriz) {
+            cardEl.classList.add('dragging');
+          } else {
+            tracking = false;
+            return;
+          }
+        }
+        if (!swipingHoriz) return;
+        if (ev && ev.cancelable) ev.preventDefault();
+
+        let nextX = baseOffset + rawDx;
+        if (nextX > 115) nextX = 115 + (nextX - 115) * 0.25;
+        currentDx = nextX;
+        cardEl.style.transform = 'translateX(' + nextX + 'px)';
+
+        if (nextX < -4) {
+          delBgEl.style.opacity = String(Math.min(1, Math.abs(nextX) / 68));
+          pinBgEl.style.opacity = '0';
+        } else if (nextX > 4) {
+          pinBgEl.style.opacity = String(Math.min(1, nextX / 68));
+          delBgEl.style.opacity = '0';
+        } else {
+          pinBgEl.style.opacity = '0';
+          delBgEl.style.opacity = '0';
+        }
+      };
+
+      const onEnd = () => {
+        if (!tracking) return;
+        tracking = false;
+        cardEl.classList.remove('dragging');
+        if (!swipingHoriz) return;
+
+        suppressClickUntil = Date.now() + 360;
+        const width = rowEl.offsetWidth || 340;
+        const fullDeleteThreshold = -Math.min(150, Math.max(115, width * 0.4));
+
+        if (currentDx <= fullDeleteThreshold) {
+          cardEl.style.transform = 'translateX(-105%)';
+          cardEl.style.opacity = '0';
+          setTimeout(() => { deleteSingleItem(it); }, 160);
+          return;
+        }
+        if (currentDx <= -58) {
+          cardEl.style.transform = 'translateX(-86px)';
+          delBgEl.style.opacity = '1';
+          pinBgEl.style.opacity = '0';
+          rowEl.classList.add('is-open-del');
+          openSwipeRowEl = rowEl;
+          return;
+        }
+        if (currentDx >= 68) {
+          cardEl.style.transform = '';
+          pinBgEl.style.opacity = '0';
+          delBgEl.style.opacity = '0';
+          rowEl.classList.remove('is-open-del');
+          togglePinItem(it);
+          return;
+        }
+
+        cardEl.style.transform = '';
+        pinBgEl.style.opacity = '0';
+        delBgEl.style.opacity = '0';
+        rowEl.classList.remove('is-open-del');
+        if (openSwipeRowEl === rowEl) openSwipeRowEl = null;
+      };
+
+      cardEl.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        onStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      }, { passive: true });
+      cardEl.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        onMove(e.touches[0].clientX, e.touches[0].clientY, e);
+      }, { passive: false });
+      cardEl.addEventListener('touchend', onEnd);
+      cardEl.addEventListener('touchcancel', onEnd);
+
+      let mouseDown = false;
+      cardEl.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        mouseDown = true;
+        onStart(e.clientX, e.clientY, e.target);
       });
-      items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      window.addEventListener('mousemove', (e) => {
+        if (!mouseDown) return;
+        onMove(e.clientX, e.clientY, e);
+      });
+      window.addEventListener('mouseup', () => {
+        if (!mouseDown) return;
+        mouseDown = false;
+        onEnd();
+      });
+    }
+
+    async function renderItems() {
+      openSwipeRowEl = null;
+      const maxLimit = getSavedMaxLimit();
+      const items = await fetchAndPruneItems();
+
       if (focusedItemId && focusedItemId !== 'latest') {
         const fIdx = items.findIndex(x => x.id === focusedItemId);
         if (fIdx > 0) {
@@ -202,7 +521,12 @@
           items.unshift(picked);
         }
       }
-      document.getElementById('countLbl').textContent = items.length + '건';
+
+      const pinnedCount = items.filter(x => Boolean(x.pinned)).length;
+      document.getElementById('countLbl').textContent = pinnedCount > 0
+        ? ('📌' + pinnedCount + ' · 총 ' + items.length + '/' + maxLimit + '건')
+        : (items.length + '/' + maxLimit + '건');
+
       const box = document.getElementById('listBox');
       if (items.length === 0) {
         box.innerHTML = '<p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p>'
@@ -219,21 +543,79 @@
 
       items.forEach((it, idx) => {
         const isTop = idx === 0;
+        const isPinned = Boolean(it.pinned);
         const isApproval = it.actionKind === 'approval' || String(it.channel || '').includes('승인') || String(it.title || '').includes('승인');
         const isTable = isTableNotificationItem(it);
         const isChat = !isTable && isChatNotificationItem(it);
+
+        const rowWrap = document.createElement('div');
+        rowWrap.className = 'swipe-row';
+
+        const pinBg = document.createElement('div');
+        pinBg.className = 'swipe-bg swipe-bg-pin';
+        pinBg.textContent = isPinned ? '📌 고정 해제' : '📌 상단 고정';
+
+        const delBg = document.createElement('div');
+        delBg.className = 'swipe-bg swipe-bg-del';
+        const delConfirmBtn = document.createElement('button');
+        delConfirmBtn.type = 'button';
+        delConfirmBtn.className = 'swipe-del-btn';
+        delConfirmBtn.textContent = '🗑️ 삭제';
+        delConfirmBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          deleteSingleItem(it);
+        };
+        delBg.appendChild(delConfirmBtn);
+
         const div = document.createElement('div');
-        div.className = 'item' + (isTop ? ' featured' : '') + (isApproval ? ' is-approval' : '');
+        div.className = 'item'
+          + (isPinned ? ' is-pinned' : (isTop ? ' featured' : ''))
+          + (isApproval ? ' is-approval' : '');
 
         const timeStr = new Date(it.ts || Date.now()).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
         const meta = document.createElement('div');
         meta.className = 'meta';
+
+        const metaLeft = document.createElement('div');
+        metaLeft.className = 'meta-left';
+        if (isPinned) {
+          const pChip = document.createElement('span');
+          pChip.className = 'pin-chip';
+          pChip.textContent = '📌 상단 고정';
+          metaLeft.appendChild(pChip);
+        }
         const ch = document.createElement('span');
         ch.className = 'badge' + (isApproval ? ' amber' : '');
-        ch.textContent = it.channel || '개인 알림';
+        ch.textContent = it.channel || '루키 알림';
         const tm = document.createElement('span');
         tm.textContent = timeStr;
-        meta.append(ch, tm);
+        metaLeft.append(ch, tm);
+
+        const metaRight = document.createElement('div');
+        metaRight.className = 'meta-right';
+
+        const pinBtn = document.createElement('button');
+        pinBtn.type = 'button';
+        pinBtn.className = 'icon-btn' + (isPinned ? ' active-pin' : '');
+        pinBtn.title = isPinned ? '상단 고정 해제' : '상단에 고정';
+        pinBtn.textContent = isPinned ? '📌 고정됨' : '📌';
+        pinBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          togglePinItem(it);
+        };
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'icon-btn del';
+        delBtn.title = '이 알림 삭제';
+        delBtn.textContent = '✕';
+        delBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          deleteSingleItem(it);
+        };
+
+        metaRight.append(pinBtn, delBtn);
+        meta.append(metaLeft, metaRight);
 
         const tt = document.createElement('div');
         tt.className = 'title';
@@ -262,7 +644,7 @@
           mainLabel = '📖 옵시디언에서 해당 노트 바로 열기';
         }
 
-        if (isTop) {
+        if (isTop && !isPinned) {
           openLink.className = 'btn' + (isApproval ? ' amber' : '');
           openLink.textContent = mainLabel;
         } else {
@@ -270,7 +652,14 @@
           openLink.style.width = '100%';
           openLink.textContent = mainLabel;
         }
-        openLink.onclick = (ev) => ev.stopPropagation();
+        openLink.onclick = (ev) => {
+          if (Date.now() < suppressClickUntil) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            return;
+          }
+          ev.stopPropagation();
+        };
         ctaWrap.appendChild(openLink);
 
         if (isTable) {
@@ -279,15 +668,42 @@
           tableWebLink.className = 'btn-sec';
           tableWebLink.style.width = '100%';
           tableWebLink.textContent = '📱 모바일 식탁 웹앱 대화창으로 열기';
-          tableWebLink.onclick = (ev) => ev.stopPropagation();
+          tableWebLink.onclick = (ev) => {
+            if (Date.now() < suppressClickUntil) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              return;
+            }
+            ev.stopPropagation();
+          };
           ctaWrap.appendChild(tableWebLink);
         }
 
-        div.onclick = () => { window.location.href = deepHref; };
+        div.onclick = () => {
+          if (Date.now() < suppressClickUntil) return;
+          if (rowWrap.classList.contains('is-open-del')) {
+            closeOpenSwipeRow(null);
+            return;
+          }
+          window.location.href = deepHref;
+        };
+
         div.appendChild(ctaWrap);
-        box.appendChild(div);
+        rowWrap.append(pinBg, delBg, div);
+        attachSwipeHandlers(rowWrap, div, pinBg, delBg, it);
+        box.appendChild(rowWrap);
       });
     }
+
+    const limitSelect = document.getElementById('limitSelect');
+    limitSelect.value = String(getSavedMaxLimit());
+    limitSelect.onchange = async () => {
+      const nextVal = Number(limitSelect.value) || DEFAULT_MAX_ITEMS;
+      localStorage.setItem('onh_max_items', String(nextVal));
+      await syncLimitToDb(nextVal);
+      await renderItems();
+    };
+    syncLimitToDb(getSavedMaxLimit());
 
     const setupCard = document.getElementById('setupCard');
     document.getElementById('toggleSetupBtn').onclick = () => {
@@ -296,13 +712,39 @@
     };
 
     document.getElementById('clearAllBtn').onclick = async () => {
-      const db = await openDb();
-      await new Promise((res) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).clear();
-        tx.oncomplete = () => res();
-      });
-      renderItems();
+      let db = null;
+      try {
+        db = await openDb();
+        const all = await new Promise((res) => {
+          const tx = db.transaction(STORE, 'readonly');
+          const req = tx.objectStore(STORE).getAll();
+          req.onsuccess = () => res(req.result || []);
+          req.onerror = () => res([]);
+        });
+        const unpinned = all.filter(x => !x.pinned);
+        const pinned = all.filter(x => Boolean(x.pinned));
+        if (unpinned.length > 0) {
+          await new Promise((res) => {
+            const tx = db.transaction(STORE, 'readwrite');
+            const st = tx.objectStore(STORE);
+            for (const u of unpinned) st.delete(u.id);
+            tx.oncomplete = () => res();
+            tx.onerror = () => res();
+          });
+        } else if (pinned.length > 0) {
+          if (!confirm('상단 고정된 알림 ' + pinned.length + '건만 남아 있습니다. 고정된 알림까지 모두 지울까요?')) return;
+          await new Promise((res) => {
+            const tx = db.transaction(STORE, 'readwrite');
+            tx.objectStore(STORE).clear();
+            tx.oncomplete = () => res();
+            tx.onerror = () => res();
+          });
+        }
+      } catch (_) {
+      } finally {
+        try { db?.close(); } catch (_) {}
+      }
+      await renderItems();
     };
 
     let latestPairingCode = localStorage.getItem('onh_pairing_code') || '';
@@ -317,7 +759,7 @@
     document.getElementById('pairBtn').onclick = async () => {
       try {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-          alert('이 화면을 먼저 홈 화면에 추가한 뒤 바탕화면 아이콘으로 열어 주세요 (iOS 16.4+ / Android 지원).');
+          alert('이 화면을 먼저 홈 화면에 추가한 뒤 바탕화면 아이콘으로 열어 주세요 (iOS 16.4+ / Android / macOS 지원).');
           return;
         }
         const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
@@ -338,7 +780,7 @@
         });
         const bundle = {
           v: 1,
-          label: (navigator.platform || '모바일') + ' 개인알림',
+          label: (navigator.platform || '모바일') + ' 루키 알림함',
           subscription: sub.toJSON(),
           vapid
         };
