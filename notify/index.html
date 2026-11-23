@@ -11,32 +11,41 @@
   <link rel="apple-touch-icon" href="./icon.svg">
   <title>🔔 옵시디언 개인 알림함</title>
   <style>
-    :root { --bg:#0b0d13; --card:#161b26; --border:rgba(255,255,255,0.09); --accent:#10b981; --text:#f8fafc; --muted:#94a3b8; }
-    * { box-sizing:border-box; }
+    :root { --bg:#0b0d13; --card:#161b26; --border:rgba(255,255,255,0.09); --accent:#10b981; --amber:#f59e0b; --text:#f8fafc; --muted:#94a3b8; }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; padding:calc(env(safe-area-inset-top,16px) + 12px) 16px 40px 16px; max-width:520px; margin-inline:auto; }
-    .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+    .hdr { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px; }
     .hdr h1 { font-size:18px; margin:0; }
+    .hdr-actions { display:flex; gap:6px; align-items:center; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
-    .btn { background:var(--accent); color:#042f2e; font-weight:700; border:none; border-radius:10px; padding:10px 14px; font-size:13.5px; cursor:pointer; width:100%; }
-    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:8px 11px; font-size:12.5px; cursor:pointer; }
+    .btn { background:var(--accent); color:#042f2e; font-weight:800; border:none; border-radius:12px; padding:13px 16px; font-size:14.5px; cursor:pointer; width:100%; display:inline-flex; justify-content:center; align-items:center; gap:6px; text-decoration:none; }
+    .btn.amber { background:var(--amber); color:#291502; }
+    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:8px 11px; font-size:12.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
     .code-box { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; color:#34d399; margin:10px 0 8px 0; height:84px; resize:none; }
     .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
-    .item { border-bottom:1px solid var(--border); padding:12px 0; }
+    .item { border-bottom:1px solid var(--border); padding:13px 0; }
     .item:last-child { border-bottom:none; }
-    .meta { font-size:11px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px; }
+    .item.featured { background:rgba(16,185,129,0.08); border:1px solid rgba(52,211,153,0.32); border-radius:14px; padding:14px; margin-bottom:10px; }
+    .item.featured.is-approval { background:rgba(245,158,11,0.11); border-color:rgba(245,158,11,0.45); }
+    .meta { font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:5px; }
     .badge { color:#34d399; font-weight:700; }
-    .title { font-size:14.5px; font-weight:700; margin-bottom:4px; }
-    .body { font-size:13px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; }
+    .badge.amber { color:#fbbf24; }
+    .title { font-size:15px; font-weight:700; margin-bottom:5px; line-height:1.35; }
+    .body { font-size:13.5px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; }
+    .cta-wrap { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
     .hint { font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 10px 0; }
   </style>
 </head>
 <body>
   <div class="hdr">
     <h1>🔔 개인 알림함</h1>
-    <button class="btn-sec" id="clearAllBtn">비우기</button>
+    <div class="hdr-actions">
+      <button class="btn-sec" id="toggleSetupBtn">⚙️ 기기 연결</button>
+      <button class="btn-sec" id="clearAllBtn">비우기</button>
+    </div>
   </div>
 
-  <div class="card" id="setupCard">
+  <div class="card" id="setupCard" style="display:none;">
     <p class="hint" id="setupHint">1. 사파리/크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>한 뒤 바탕화면 아이콘으로 여세요.<br>2. 아래 단추로 연결 코드를 발급받은 뒤 <strong>원터치 자동 등록</strong> 또는 <strong>복사·AirDrop</strong>으로 옵시디언에 연결하세요.</p>
     <button class="btn" id="pairBtn">🔐 알림 켜기 및 기기 연결 코드 발급</button>
     <div id="codeWrap" style="display:none;">
@@ -50,7 +59,7 @@
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <strong style="font-size:14px;">최근 도착한 개인 알림</strong>
       <span id="countLbl" style="font-size:12px;color:#94a3b8;">0건</span>
     </div>
@@ -61,6 +70,21 @@
     const DB_NAME = 'obsidian_personal_notify_db';
     const STORE = 'items';
     const DEEP_SCHEME = 'obsidian://open';
+    let focusedItemId = '';
+
+    function readFocusHash() {
+      const m = String(location.hash || '').match(/focus=([^&]+)/);
+      focusedItemId = m ? decodeURIComponent(m[1]) : '';
+    }
+    readFocusHash();
+    window.addEventListener('hashchange', () => { readFocusHash(); renderItems(); });
+
+    function buildObsidianDeepLink(it) {
+      const params = [];
+      if (it.vault) params.push('vault=' + encodeURIComponent(it.vault));
+      if (it.notePath) params.push('file=' + encodeURIComponent(it.notePath));
+      return params.length > 0 ? (DEEP_SCHEME + '?' + params.join('&')) : DEEP_SCHEME;
+    }
 
     function b64uEncode(bytes) {
       let bin = '';
@@ -135,21 +159,33 @@
         req.onerror = () => res([]);
       });
       items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (focusedItemId && focusedItemId !== 'latest') {
+        const fIdx = items.findIndex(x => x.id === focusedItemId);
+        if (fIdx > 0) {
+          const [picked] = items.splice(fIdx, 1);
+          items.unshift(picked);
+        }
+      }
       document.getElementById('countLbl').textContent = items.length + '건';
       const box = document.getElementById('listBox');
       if (items.length === 0) {
-        box.innerHTML = '<p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p>';
+        box.innerHTML = '<p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p>'
+          + '<a class="btn-sec" href="obsidian://open" style="width:100%;margin-top:6px;">📲 옵시디언 바로 열기</a>';
         return;
       }
       box.innerHTML = '';
-      for (const it of items) {
+      items.forEach((it, idx) => {
+        const isTop = idx === 0;
+        const isApproval = it.actionKind === 'approval' || String(it.channel || '').includes('승인') || String(it.title || '').includes('승인');
+        const isTable = String(it.channel || '').includes('식탁') || String(it.notePath || '').includes('루키의 식탁/');
         const div = document.createElement('div');
-        div.className = 'item';
+        div.className = 'item' + (isTop ? ' featured' : '') + (isApproval ? ' is-approval' : '');
+
         const timeStr = new Date(it.ts || Date.now()).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
         const meta = document.createElement('div');
         meta.className = 'meta';
         const ch = document.createElement('span');
-        ch.className = 'badge';
+        ch.className = 'badge' + (isApproval ? ' amber' : '');
         ch.textContent = it.channel || '개인 알림';
         const tm = document.createElement('span');
         tm.textContent = timeStr;
@@ -164,20 +200,48 @@
         bd.textContent = it.body || '';
 
         div.append(meta, tt, bd);
-        if (it.notePath) {
-          const openBtn = document.createElement('button');
-          openBtn.className = 'btn-sec';
-          openBtn.style.marginTop = '8px';
-          openBtn.textContent = '📖 옵시디언에서 노트 열기';
-          openBtn.onclick = () => {
-            const q = it.vault ? ('vault=' + encodeURIComponent(it.vault) + '&file=' + encodeURIComponent(it.notePath)) : ('file=' + encodeURIComponent(it.notePath));
-            location.href = DEEP_SCHEME + '?' + q;
-          };
-          div.appendChild(openBtn);
+
+        const deepHref = buildObsidianDeepLink(it);
+        const ctaWrap = document.createElement('div');
+        ctaWrap.className = 'cta-wrap';
+
+        const openLink = document.createElement('a');
+        openLink.href = deepHref;
+        if (isTop) {
+          openLink.className = 'btn' + (isApproval ? ' amber' : '');
+          if (isApproval) {
+            openLink.textContent = '🔐 옵시디언으로 돌아가 바로 승인하기';
+          } else if (it.notePath) {
+            openLink.textContent = '📲 옵시디언에서 해당 노트 바로 열기';
+          } else {
+            openLink.textContent = '📲 옵시디언 바로 열기';
+          }
+        } else {
+          openLink.className = 'btn-sec';
+          openLink.style.width = '100%';
+          openLink.textContent = it.notePath ? '📖 옵시디언에서 해당 노트 열기' : '📲 옵시디언 열기';
         }
+        ctaWrap.appendChild(openLink);
+
+        if (isTable) {
+          const tableWebLink = document.createElement('a');
+          tableWebLink.href = '../table/';
+          tableWebLink.className = 'btn-sec';
+          tableWebLink.style.width = '100%';
+          tableWebLink.textContent = '🍽️ 모바일 식탁 웹앱으로 바로 가기';
+          ctaWrap.appendChild(tableWebLink);
+        }
+
+        div.appendChild(ctaWrap);
         box.appendChild(div);
-      }
+      });
     }
+
+    const setupCard = document.getElementById('setupCard');
+    document.getElementById('toggleSetupBtn').onclick = () => {
+      const hidden = setupCard.style.display === 'none';
+      setupCard.style.display = hidden ? 'block' : 'none';
+    };
 
     document.getElementById('clearAllBtn').onclick = async () => {
       const db = await openDb();
@@ -193,6 +257,9 @@
     if (latestPairingCode) {
       document.getElementById('pairCodeBox').value = latestPairingCode;
       document.getElementById('codeWrap').style.display = 'block';
+      setupCard.style.display = 'none';
+    } else {
+      setupCard.style.display = 'block';
     }
 
     document.getElementById('pairBtn').onclick = async () => {
@@ -258,7 +325,12 @@
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
-      navigator.serviceWorker.addEventListener('message', () => renderItems());
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        if (ev.data && ev.data.type === 'FOCUS_ITEM' && ev.data.item?.id) {
+          focusedItemId = ev.data.item.id;
+        }
+        renderItems();
+      });
     }
     renderItems();
   </script>
