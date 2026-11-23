@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="루키의 식탁">
+  <meta name="theme-color" content="#0b0d13">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <title>🍽️ 루키의 식탁</title>
+  <style>
+    :root { --bg:#0b0d13; --panel:#141923; --card:#1b2230; --border:rgba(255,255,255,0.1); --accent:#10b981; --text:#f8fafc; --muted:#94a3b8; }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+    .login-wrap { max-width:420px; width:100%; margin:auto; padding:24px 18px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:20px; }
+    label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px 0; font-weight:600; }
+    input, select, textarea { width:100%; background:#0b0e14; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:14px; }
+    .btn { background:var(--accent); color:#042f2e; border:none; border-radius:10px; padding:11px 14px; font-weight:700; font-size:14px; cursor:pointer; width:100%; margin-top:14px; }
+    .btn-sm { background:rgba(255,255,255,0.07); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; }
+    .topbar { padding:calc(env(safe-area-inset-top,10px) + 8px) 12px 8px 12px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .roombar { display:flex; gap:6px; overflow-x:auto; padding:7px 10px; background:#0f131c; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .rtab { padding:5px 11px; border-radius:999px; border:1px solid var(--border); background:var(--panel); color:var(--muted); font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; }
+    .rtab.active { background:var(--accent); color:#042f2e; border-color:var(--accent); }
+    .msgs { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:11px; }
+    .msg { display:flex; flex-direction:column; gap:3px; }
+    .msg.mine { align-items:flex-end; }
+    .msg.other, .msg.assistant { align-items:flex-start; }
+    .meta { font-size:11px; color:var(--muted); display:flex; align-items:center; gap:5px; }
+    .unread { color:#f59e0b; font-weight:800; font-size:10.5px; }
+    .read-ok { color:#10b981; font-weight:700; font-size:10px; }
+    .bubble { max-width:88%; padding:9px 13px; border-radius:12px; background:var(--card); border:1px solid var(--border); font-size:14px; line-height:1.56; white-space:pre-wrap; word-break:break-word; }
+    .msg.mine .bubble { background:#1e293b; border-radius:12px 12px 4px 12px; }
+    .msg.assistant .bubble { background:#111c24; border-color:rgba(16,185,129,0.4); width:100%; max-width:100%; }
+    .composer { padding:8px 10px calc(env(safe-area-inset-bottom,10px) + 8px) 10px; background:var(--panel); border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+    .comp-row { display:flex; gap:6px; align-items:flex-end; }
+    .att-chip { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.4); padding:3px 8px; border-radius:7px; margin-right:5px; }
+    .att-box { margin-top:7px; display:flex; flex-direction:column; gap:6px; }
+    .att-box img { max-width:220px; border-radius:8px; border:1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="login-wrap">
+    <div class="card">
+      <h2 style="margin:0 0 6px 0;font-size:18px;">🍽️ 루키의 식탁 로그인</h2>
+      <p style="margin:0 0 12px 0;font-size:12.5px;color:#94a3b8;line-height:1.5;">가족 입장 코드와 본인 비밀번호(PIN)로 로그인하세요. 홈 화면에 추가해 두면 참여한 방의 새 톡 알림을 실시간으로 받습니다.</p>
+      <label>1. 식탁 입장 코드</label>
+      <input id="inviteInput" type="text" placeholder="LTBL1:... 코드를 붙여넣으세요" autocomplete="off">
+      <button class="btn-sm" id="loadMembersBtn" style="margin-top:8px;width:100%;">가족 목록 불러오기</button>
+
+      <label>2. 본인 이름 선택</label>
+      <select id="memberSelect"><option value="">먼저 위 입장 코드를 확인해 주세요</option></select>
+
+      <label>3. 개인 비밀번호 (PIN)</label>
+      <input id="pinInput" type="password" inputmode="numeric" placeholder="개인 PIN 입력">
+
+      <button class="btn" id="loginBtn">입장 및 알림 연결하기</button>
+      <p id="loginErr" style="color:#f87171;font-size:12.5px;margin:10px 0 0 0;"></p>
+    </div>
+  </div>
+
+  <div id="chatScreen" style="display:none;height:100%;flex-direction:column;">
+    <div class="topbar">
+      <div style="font-weight:700;font-size:14px;"><span id="wsDot" style="color:#94a3b8;">●</span> 🍽️ <span id="meNameLbl">식탁</span></div>
+      <div style="display:flex;gap:5px;">
+        <button class="btn-sm" id="pushSubBtn">🔔 푸시 켜기</button>
+        <button class="btn-sm" id="pinChgBtn">PIN 변경</button>
+        <button class="btn-sm" id="logoutBtn">로그아웃</button>
+      </div>
+    </div>
+    <div class="roombar" id="roomBar"></div>
+    <div class="msgs" id="msgList"></div>
+    <div class="composer">
+      <div id="pendingAttBar" style="display:none;flex-wrap:wrap;gap:4px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:5px;align-items:center;">
+          <button class="btn-sm" id="lukiToggleBtn">🪶 @루키 부르기</button>
+          <button class="btn-sm" id="attachBtn">📎 사진·문서</button>
+          <input type="file" id="filePicker" style="display:none;" accept="image/*,.pdf,.txt,.md,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip">
+        </div>
+        <span id="typingLbl" style="font-size:11px;color:#34d399;"></span>
+      </div>
+      <div class="comp-row">
+        <textarea id="chatInput" rows="2" placeholder="메시지 입력..." style="flex:1;resize:none;"></textarea>
+        <button class="btn" id="sendBtn" style="width:auto;margin:0;padding:10px 15px;">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const VIDEO_EXT_RE = /\.(mp4|mov|m4v|avi|mkv|webm|wmv|flv|mpeg|mpg|3gp|ogv|ts|mts|m2ts)$/i;
+    let state = {
+      inviteCode: localStorage.getItem('lt_invite') || '',
+      gatewayUrl: localStorage.getItem('lt_gw') || '',
+      sessionToken: localStorage.getItem('lt_sess') || '',
+      vapidPublicKey: localStorage.getItem('lt_vapid') || '',
+      me: null,
+      rooms: [],
+      activeRoomId: 'room_living',
+      ws: null,
+      invokeLuki: false,
+      liveStreams: {},
+      pendingAtts: []
+    };
+
+    function hexToBytes(hex) {
+      const out = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+      return out;
+    }
+    function b64uDecode(str) {
+      const s = str.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+      const bin = atob(s + pad);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+
+    async function resolveGatewayFromInvite(inviteCode) {
+      const clean = String(inviteCode || '').trim();
+      if (!clean.startsWith('LTBL1:')) throw new Error('LTBL1: 로 시작하는 식탁 입장 코드를 입력해 주세요.');
+      const meta = JSON.parse(new TextDecoder().decode(b64uDecode(clean.slice(6))));
+      let gw = (meta.g || '').replace(/\/+$/, '');
+      if (meta.t && meta.k) {
+        try {
+          const r = await fetch('https://ntfy.sh/' + encodeURIComponent(meta.t) + '/json?poll=1&since=all');
+          if (r.ok) {
+            const lines = (await r.text()).trim().split('\n').reverse();
+            for (const ln of lines) {
+              try {
+                const obj = JSON.parse(ln);
+                if (obj.message && obj.message.startsWith('LUKIBEACON1:')) {
+                  const p = obj.message.split(':');
+                  const iv = hexToBytes(p[1]), tag = hexToBytes(p[2]), ct = hexToBytes(p[3]);
+                  const comb = new Uint8Array(ct.length + tag.length);
+                  comb.set(ct, 0); comb.set(tag, ct.length);
+                  const ck = await crypto.subtle.importKey('raw', hexToBytes(meta.k), { name: 'AES-GCM' }, false, ['decrypt']);
+                  const dec = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, comb)));
+                  if (dec.url) { gw = dec.url.replace(/\/+$/, ''); break; }
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+      if (!gw) throw new Error('서버 주소를 확인할 수 없습니다.');
+      state.gatewayUrl = gw;
+      localStorage.setItem('lt_gw', gw);
+      return gw;
+    }
+
+    async function apiFetch(path, opts = {}) {
+      let gw = state.gatewayUrl;
+      if (!gw && state.inviteCode) gw = await resolveGatewayFromInvite(state.inviteCode);
+      const headers = Object.assign({}, opts.headers || {});
+      if (state.sessionToken) headers['X-Table-Web-Session'] = state.sessionToken;
+      if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      let res;
+      try {
+        res = await fetch(gw + path, Object.assign({}, opts, { headers }));
+      } catch (e) {
+        if (state.inviteCode) {
+          gw = await resolveGatewayFromInvite(state.inviteCode);
+          res = await fetch(gw + path, Object.assign({}, opts, { headers }));
+        } else throw e;
+      }
+      return res;
+    }
+
+    document.getElementById('inviteInput').value = state.inviteCode;
+    document.getElementById('loadMembersBtn').onclick = async () => {
+      const errEl = document.getElementById('loginErr');
+      errEl.textContent = '';
+      try {
+        const code = document.getElementById('inviteInput').value.trim();
+        state.inviteCode = code;
+        localStorage.setItem('lt_invite', code);
+        await resolveGatewayFromInvite(code);
+        const r = await apiFetch('/table/public/directory', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || '코드 확인 실패');
+        const sel = document.getElementById('memberSelect');
+        sel.innerHTML = '';
+        for (const m of d.members) {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.name + ' (' + m.relation + ')';
+          sel.appendChild(opt);
+        }
+        if (d.vapidPublicKey) { state.vapidPublicKey = d.vapidPublicKey; localStorage.setItem('lt_vapid', d.vapidPublicKey); }
+      } catch (e) {
+        errEl.textContent = e.message || String(e);
+      }
+    };
+
+    document.getElementById('loginBtn').onclick = async () => {
+      const errEl = document.getElementById('loginErr');
+      errEl.textContent = '';
+      try {
+        const code = document.getElementById('inviteInput').value.trim();
+        const memberId = document.getElementById('memberSelect').value;
+        const pin = document.getElementById('pinInput').value.trim();
+        if (!code || !memberId || !pin) throw new Error('입장 코드, 이름 선택, 개인 PIN을 모두 입력해 주세요.');
+        state.inviteCode = code;
+        localStorage.setItem('lt_invite', code);
+        await resolveGatewayFromInvite(code);
+        const r = await apiFetch('/table/auth/login', { method: 'POST', body: JSON.stringify({ inviteCode: code, memberId, pin }) });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || '로그인 실패');
+        state.sessionToken = d.sessionToken;
+        localStorage.setItem('lt_sess', d.sessionToken);
+        if (d.vapidPublicKey) { state.vapidPublicKey = d.vapidPublicKey; localStorage.setItem('lt_vapid', d.vapidPublicKey); }
+        await enterChatApp();
+        subscribeTablePush(true);
+      } catch (e) {
+        errEl.textContent = e.message || String(e);
+      }
+    };
+
+    async function subscribeTablePush(silent = false) {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !state.vapidPublicKey) {
+          if (!silent) alert('홈 화면에 추가한 앱에서 실행해 주세요.');
+          return;
+        }
+        const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+        await navigator.serviceWorker.ready;
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uDecode(state.vapidPublicKey) });
+        }
+        await apiFetch('/table/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON(), userAgent: navigator.userAgent }) });
+        if (!silent) alert('✅ 참여 중인 방의 실시간 잠금화면 알림이 켜졌습니다!');
+      } catch (e) {
+        if (!silent) alert('알림 설정 안내: ' + (e.message || e));
+      }
+    }
+
+    document.getElementById('pushSubBtn').onclick = () => subscribeTablePush(false);
+    document.getElementById('pinChgBtn').onclick = async () => {
+      const np = prompt('새 개인 비밀번호(PIN 4~16자리)를 입력하세요:');
+      if (!np) return;
+      const r = await apiFetch('/table/profile/pin', { method: 'POST', body: JSON.stringify({ newPin: np.trim() }) });
+      const d = await r.json();
+      alert(d.ok ? '비밀번호가 변경되었습니다.' : (d.error || '변경 실패'));
+    };
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem('lt_sess');
+      location.reload();
+    };
+
+    function computeUnread(room, m) {
+      if (!room || room.isPrivateSolo) return 0;
+      const mIds = (room.members || []).map(x => x.id || x);
+      const reads = (m.readBy || []).filter(u => mIds.includes(u));
+      return Math.max(0, mIds.length - reads.length);
+    }
+
+    function sendReadForActiveRoom() {
+      const room = state.rooms.find(r => r.id === state.activeRoomId);
+      if (!room || room.isPrivateSolo || document.visibilityState === 'hidden') return;
+      let maxSeq = 0, maxTs = 0;
+      for (const m of (room.messages || [])) {
+        if (!Array.isArray(m.readBy)) m.readBy = [];
+        if (state.me && !m.readBy.includes(state.me.id)) m.readBy.push(state.me.id);
+        m.unreadCount = computeUnread(room, m);
+        if (m.seq > maxSeq) maxSeq = m.seq;
+        if ((m.createdAt || 0) > maxTs) maxTs = m.createdAt || 0;
+      }
+      if (state.ws && state.ws.readyState === 1) {
+        state.ws.send(JSON.stringify({ type: 'read', roomId: room.id, upToSeq: maxSeq, upToCreatedAt: maxTs, isViewing: true }));
+      } else {
+        apiFetch('/table/read', { method: 'POST', body: JSON.stringify({ roomId: room.id, upToSeq: maxSeq, upToCreatedAt: maxTs }) }).catch(() => {});
+      }
+      renderMessages();
+    }
+
+    function renderRooms() {
+      const bar = document.getElementById('roomBar');
+      bar.innerHTML = '';
+      for (const r of state.rooms) {
+        const b = document.createElement('button');
+        b.className = 'rtab' + (r.id === state.activeRoomId ? ' active' : '');
+        b.textContent = r.isPrivateSolo ? '🌿 나의 식탁방' : r.title;
+        b.onclick = () => {
+          state.activeRoomId = r.id;
+          state.invokeLuki = Boolean(r.isPrivateSolo);
+          syncLukiBtn();
+          renderRooms();
+          sendReadForActiveRoom();
+        };
+        bar.appendChild(b);
+      }
+    }
+
+    async function loadAuthAttachmentImg(roomId, attId, imgEl) {
+      try {
+        const r = await apiFetch('/table/attachment?roomId=' + encodeURIComponent(roomId) + '&attId=' + encodeURIComponent(attId));
+        if (!r.ok) return;
+        const blob = await r.blob();
+        imgEl.src = URL.createObjectURL(blob);
+      } catch (_) {}
+    }
+
+    function renderMessages() {
+      const box = document.getElementById('msgList');
+      const room = state.rooms.find(r => r.id === state.activeRoomId);
+      box.innerHTML = '';
+      if (!room) return;
+      for (const m of (room.messages || [])) {
+        const mine = m.role === 'user' && state.me && m.senderId === state.me.id;
+        const wrap = document.createElement('div');
+        wrap.className = 'msg ' + (m.role === 'assistant' ? 'assistant' : (mine ? 'mine' : 'other'));
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const unread = computeUnread(room, m);
+        const tStr = new Date(m.createdAt || Date.now()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        const nameLbl = m.role === 'assistant' ? '🪶 루키' : m.senderName;
+        if (mine) {
+          if (!room.isPrivateSolo) {
+            const sp = document.createElement('span');
+            sp.className = unread > 0 ? 'unread' : 'read-ok';
+            sp.textContent = unread > 0 ? String(unread) : '읽음';
+            meta.appendChild(sp);
+          }
+          const nm = document.createElement('span');
+          nm.textContent = nameLbl + ' · ' + tStr;
+          meta.appendChild(nm);
+        } else {
+          const nm = document.createElement('span');
+          nm.textContent = nameLbl + ' · ' + tStr;
+          meta.appendChild(nm);
+          if (!room.isPrivateSolo && unread > 0) {
+            const sp = document.createElement('span');
+            sp.className = 'unread';
+            sp.textContent = String(unread);
+            meta.appendChild(sp);
+          }
+        }
+        const bub = document.createElement('div');
+        bub.className = 'bubble';
+        bub.textContent = String(m.text || '').replace(/==([^=]+)==/g, '$1');
+        if (Array.isArray(m.attachments) && m.attachments.length > 0) {
+          const ab = document.createElement('div');
+          ab.className = 'att-box';
+          for (const a of m.attachments) {
+            if (a.isImage) {
+              const im = document.createElement('img');
+              im.alt = a.name;
+              loadAuthAttachmentImg(room.id, a.id, im);
+              ab.appendChild(im);
+            } else {
+              const dl = document.createElement('button');
+              dl.className = 'btn-sm';
+              dl.textContent = '📄 ' + a.name + ' 내려받기';
+              dl.onclick = async () => {
+                const r = await apiFetch('/table/attachment?roomId=' + encodeURIComponent(room.id) + '&attId=' + encodeURIComponent(a.id));
+                if (!r.ok) return alert('참여자만 열람할 수 있습니다.');
+                const blob = await r.blob();
+                const u = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = u; link.download = a.name; link.click();
+              };
+              ab.appendChild(dl);
+            }
+          }
+          bub.appendChild(ab);
+        }
+        wrap.append(meta, bub);
+        box.appendChild(wrap);
+      }
+      const st = state.liveStreams[room.id];
+      if (st) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg assistant';
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = '🪶 루키 · ' + (st.status || '답변 작성 중...');
+        const bub = document.createElement('div');
+        bub.className = 'bubble';
+        bub.textContent = st.text || '⋯';
+        wrap.append(meta, bub);
+        box.appendChild(wrap);
+      }
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function connectWs() {
+      if (state.ws && state.ws.readyState <= 1) return;
+      const wsBase = state.gatewayUrl.replace(/^http/, 'ws');
+      const ws = new WebSocket(wsBase + '/table/ws?session=' + encodeURIComponent(state.sessionToken) + '&activeRoom=' + encodeURIComponent(state.activeRoomId));
+      state.ws = ws;
+      ws.onopen = () => { document.getElementById('wsDot').style.color = '#10b981'; };
+      ws.onclose = () => {
+        document.getElementById('wsDot').style.color = '#94a3b8';
+        setTimeout(() => { if (state.sessionToken) connectWs(); }, 3000);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const pkt = JSON.parse(ev.data);
+          const d = pkt.data;
+          if (pkt.event === 'assistant_start') {
+            state.liveStreams[d.roomId] = { status: '생각 정리 중...', text: '' };
+            if (d.roomId === state.activeRoomId) renderMessages();
+          } else if (pkt.event === 'assistant_stream') {
+            state.liveStreams[d.roomId] = { status: d.status, text: d.text || '' };
+            if (d.roomId === state.activeRoomId) renderMessages();
+          } else if (pkt.event === 'message') {
+            delete state.liveStreams[d.roomId];
+            const r = state.rooms.find(x => x.id === d.roomId);
+            if (r) {
+              const idx = r.messages.findIndex(x => x.id === d.id);
+              if (idx >= 0) r.messages[idx] = d; else r.messages.push(d);
+              if (r.id === state.activeRoomId && document.visibilityState === 'visible') sendReadForActiveRoom();
+              else renderMessages();
+            }
+          } else if (pkt.event === 'read_receipt') {
+            const r = state.rooms.find(x => x.id === d.roomId);
+            if (r) {
+              for (const m of r.messages) {
+                if (d.upToSeq > 0 && m.seq > d.upToSeq) continue;
+                if (!Array.isArray(m.readBy)) m.readBy = [];
+                if (!m.readBy.includes(d.memberId)) m.readBy.push(d.memberId);
+                m.unreadCount = computeUnread(r, m);
+              }
+              if (r.id === state.activeRoomId) renderMessages();
+            }
+          } else if (pkt.event === 'typing') {
+            if (d.roomId === state.activeRoomId && d.memberId !== state.me?.id) {
+              document.getElementById('typingLbl').textContent = d.isTyping ? (d.memberName + ' 입력 중⋯') : '';
+            }
+          }
+        } catch (_) {}
+      };
+    }
+
+    function syncLukiBtn() {
+      const b = document.getElementById('lukiToggleBtn');
+      b.textContent = state.invokeLuki ? '🪶 @루키 ON' : '🪶 @루키 부르기';
+      b.style.borderColor = state.invokeLuki ? '#10b981' : '';
+    }
+    document.getElementById('lukiToggleBtn').onclick = () => { state.invokeLuki = !state.invokeLuki; syncLukiBtn(); };
+
+    document.getElementById('attachBtn').onclick = () => document.getElementById('filePicker').click();
+    document.getElementById('filePicker').onchange = async (ev) => {
+      const f = ev.target.files?.[0];
+      ev.target.value = '';
+      if (!f) return;
+      if ((f.type && f.type.startsWith('video/')) || VIDEO_EXT_RE.test(f.name)) {
+        alert('용량 보호를 위해 동영상 파일은 첨부할 수 없습니다.');
+        return;
+      }
+      if (f.size > 15 * 1024 * 1024) {
+        alert('파일 크기는 15MB 이하만 첨부할 수 있습니다.');
+        return;
+      }
+      const b64 = await new Promise((res, rej) => {
+        const rd = new FileReader();
+        rd.onload = () => res(String(rd.result).split(',')[1] || '');
+        rd.onerror = rej;
+        rd.readAsDataURL(f);
+      });
+      const r = await apiFetch('/table/attachment/upload', {
+        method: 'POST',
+        body: JSON.stringify({ roomId: state.activeRoomId, fileName: f.name, mimeType: f.type || 'application/octet-stream', dataBase64: b64 })
+      });
+      const d = await r.json();
+      if (!d.ok) return alert(d.error || '첨부 실패');
+      state.pendingAtts.push(d.attachment);
+      renderPendingAtts();
+    };
+
+    function renderPendingAtts() {
+      const bar = document.getElementById('pendingAttBar');
+      if (state.pendingAtts.length === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+      bar.style.display = 'flex';
+      bar.innerHTML = '';
+      state.pendingAtts.forEach((a, idx) => {
+        const sp = document.createElement('span');
+        sp.className = 'att-chip';
+        sp.textContent = '📎 ' + a.name + ' ✕';
+        sp.onclick = () => { state.pendingAtts.splice(idx, 1); renderPendingAtts(); };
+        bar.appendChild(sp);
+      });
+    }
+
+    document.getElementById('sendBtn').onclick = async () => {
+      const ta = document.getElementById('chatInput');
+      const txt = ta.value.trim();
+      const attIds = state.pendingAtts.map(a => a.id);
+      if (!txt && attIds.length === 0) return;
+      ta.value = '';
+      state.pendingAtts = [];
+      renderPendingAtts();
+      const room = state.rooms.find(r => r.id === state.activeRoomId);
+      const invoke = state.invokeLuki || Boolean(room?.isPrivateSolo);
+      if (!room?.isPrivateSolo) { state.invokeLuki = false; syncLukiBtn(); }
+      await apiFetch('/table/message', {
+        method: 'POST',
+        body: JSON.stringify({ roomId: state.activeRoomId, text: txt, attachmentIds: attIds, invokeLuki: invoke })
+      });
+    };
+
+    async function enterChatApp() {
+      const r = await apiFetch('/table/bootstrap?sinceSeq=0');
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || '세션 만료');
+      state.me = d.me;
+      state.rooms = d.rooms || [];
+      if (d.vapidPublicKey) state.vapidPublicKey = d.vapidPublicKey;
+      const hashM = location.hash.match(/room=([^&]+)/);
+      if (hashM) state.activeRoomId = decodeURIComponent(hashM[1]);
+      else if (!state.rooms.find(x => x.id === state.activeRoomId) && state.rooms[0]) state.activeRoomId = state.rooms[0].id;
+
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('chatScreen').style.display = 'flex';
+      document.getElementById('meNameLbl').textContent = state.me.name;
+      renderRooms();
+      sendReadForActiveRoom();
+      connectWs();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.me) sendReadForActiveRoom();
+    });
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        if (ev.data?.type === 'OPEN_TABLE_ROOM' && ev.data.roomId) {
+          state.activeRoomId = ev.data.roomId;
+          renderRooms();
+          sendReadForActiveRoom();
+        }
+      });
+    }
+    if (state.sessionToken) {
+      enterChatApp().catch(() => { localStorage.removeItem('lt_sess'); state.sessionToken = ''; });
+    }
+  </script>
+</body>
+</html>
