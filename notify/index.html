@@ -18,8 +18,9 @@
     .hdr h1 { font-size:18px; margin:0; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
     .btn { background:var(--accent); color:#042f2e; font-weight:700; border:none; border-radius:10px; padding:10px 14px; font-size:13.5px; cursor:pointer; width:100%; }
-    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:7px 11px; font-size:12px; cursor:pointer; }
-    .code-box { font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; word-break:break-all; color:#34d399; margin:10px 0; max-height:92px; overflow-y:auto; }
+    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:8px 11px; font-size:12.5px; cursor:pointer; }
+    .code-box { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; color:#34d399; margin:10px 0 8px 0; height:84px; resize:none; }
+    .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
     .item { border-bottom:1px solid var(--border); padding:12px 0; }
     .item:last-child { border-bottom:none; }
     .meta { font-size:11px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px; }
@@ -36,11 +37,15 @@
   </div>
 
   <div class="card" id="setupCard">
-    <p class="hint" id="setupHint">1. 사파리/크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>한 뒤 바탕화면 아이콘으로 여세요.<br>2. 아래 단추를 눌러 내 기기 전용 암호화 연결 코드를 복사해 데스크탑 옵시디언 <strong>개인 알림 허브</strong> 설정에 붙여넣으세요.</p>
+    <p class="hint" id="setupHint">1. 사파리/크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>한 뒤 바탕화면 아이콘으로 여세요.<br>2. 아래 단추로 연결 코드를 발급받은 뒤 <strong>원터치 자동 등록</strong> 또는 <strong>복사·AirDrop</strong>으로 옵시디언에 연결하세요.</p>
     <button class="btn" id="pairBtn">🔐 알림 켜기 및 기기 연결 코드 발급</button>
     <div id="codeWrap" style="display:none;">
-      <div class="code-box" id="pairCodeBox"></div>
-      <button class="btn-sec" id="copyCodeBtn" style="width:100%;">📋 연결 코드 복사하기</button>
+      <textarea class="code-box" id="pairCodeBox" readonly onclick="this.focus();this.select();"></textarea>
+      <button class="btn" id="oneTapObsBtn" style="margin-bottom:8px;">📲 이 기기의 옵시디언에 원터치 자동 등록</button>
+      <div class="btn-grid">
+        <button class="btn-sec" id="copyCodeBtn">📋 연결 코드 복사</button>
+        <button class="btn-sec" id="shareCodeBtn">📤 AirDrop·공유 전송</button>
+      </div>
     </div>
   </div>
 
@@ -70,6 +75,25 @@
       const out = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
       return out;
+    }
+
+    async function copyTextBulletproof(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (_) {}
+      try {
+        const box = document.getElementById('pairCodeBox');
+        box.value = text;
+        box.focus();
+        box.select();
+        box.setSelectionRange(0, text.length);
+        return document.execCommand('copy');
+      } catch (_) {
+        return false;
+      }
     }
 
     async function getOrCreateLocalVapidKeys() {
@@ -167,7 +191,7 @@
 
     let latestPairingCode = localStorage.getItem('onh_pairing_code') || '';
     if (latestPairingCode) {
-      document.getElementById('pairCodeBox').textContent = latestPairingCode;
+      document.getElementById('pairCodeBox').value = latestPairingCode;
       document.getElementById('codeWrap').style.display = 'block';
     }
 
@@ -202,19 +226,34 @@
         const code = 'ONH1:' + b64uEncode(new TextEncoder().encode(JSON.stringify(bundle)));
         localStorage.setItem('onh_pairing_code', code);
         latestPairingCode = code;
-        document.getElementById('pairCodeBox').textContent = code;
+        document.getElementById('pairCodeBox').value = code;
         document.getElementById('codeWrap').style.display = 'block';
+        await copyTextBulletproof(code);
       } catch (err) {
         alert('연결 코드 생성 오류: ' + (err.message || err));
       }
     };
 
+    document.getElementById('oneTapObsBtn').onclick = () => {
+      if (!latestPairingCode) return;
+      location.href = 'obsidian://notify-hub-pair?code=' + encodeURIComponent(latestPairingCode);
+    };
+
     document.getElementById('copyCodeBtn').onclick = async () => {
       if (!latestPairingCode) return;
-      await navigator.clipboard.writeText(latestPairingCode);
+      const ok = await copyTextBulletproof(latestPairingCode);
       const b = document.getElementById('copyCodeBtn');
-      b.textContent = '✅ 복사 완료! 옵시디언 설정창에 붙여넣으세요';
-      setTimeout(() => { b.textContent = '📋 연결 코드 복사하기'; }, 2000);
+      b.textContent = ok ? '✅ 복사 완료!' : '위 상자를 길게 눌러 복사하세요';
+      setTimeout(() => { b.textContent = '📋 연결 코드 복사'; }, 2200);
+    };
+
+    document.getElementById('shareCodeBtn').onclick = async () => {
+      if (!latestPairingCode) return;
+      if (navigator.share) {
+        try { await navigator.share({ text: latestPairingCode }); return; } catch (_) {}
+      }
+      await copyTextBulletproof(latestPairingCode);
+      alert('연결 코드를 복사했습니다. 맥북이나 PC로 붙여넣어 주세요.');
     };
 
     if ('serviceWorker' in navigator) {
