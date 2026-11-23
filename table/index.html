@@ -21,6 +21,7 @@
     .btn { background:var(--accent); color:#042f2e; border:none; border-radius:10px; padding:11px 14px; font-weight:700; font-size:14px; cursor:pointer; width:100%; margin-top:14px; text-decoration:none; display:inline-flex; justify-content:center; align-items:center; }
     .btn-sm { background:rgba(255,255,255,0.07); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
     .topbar { padding:calc(env(safe-area-inset-top,10px) + 8px) 12px 8px 12px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0; }
+    .push-guide-bar { display:none; padding:8px 12px; background:rgba(245,158,11,0.14); border-bottom:1px solid rgba(245,158,11,0.35); color:#fcd34d; font-size:12px; align-items:center; justify-content:space-between; gap:8px; flex-shrink:0; }
     .app-body { flex:1; display:flex; min-height:0; position:relative; overflow:hidden; }
     .sidebar { width:270px; background:#0f131c; border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; flex-shrink:0; }
     .sb-head { padding:9px 10px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:7px; }
@@ -67,18 +68,19 @@
   <div id="loginScreen" class="login-wrap">
     <div class="card">
       <h2 style="margin:0 0 6px 0;font-size:18px;">🍽️ 루키의 식탁 로그인</h2>
-      <p style="margin:0 0 12px 0;font-size:12.5px;color:#94a3b8;line-height:1.5;">가족 입장 코드와 본인 비밀번호(PIN)로 로그인하세요. 홈 화면에 추가해 두면 참여한 방의 새 톡 알림을 실시간으로 받습니다.</p>
-      <label>1. 식탁 입장 코드</label>
-      <input id="inviteInput" type="text" placeholder="LTBL1:... 코드를 붙여넣으세요" autocomplete="off">
+      <p style="margin:0 0 12px 0;font-size:12.5px;color:#94a3b8;line-height:1.5;">가족 입장 코드(<code>LTBL1:...</code> 또는 개인 초대 키 <code>ltok_...</code>)와 본인 비밀번호(PIN)로 로그인하세요. 홈 화면에 추가한 아이콘으로 열면 새 톡 알림을 실시간으로 받습니다.</p>
+      <label>1. 식탁 입장 코드 (대소문자 무관 · ltok_ 키도 자동 인식)</label>
+      <input id="inviteInput" type="text" placeholder="LTBL1:... 또는 ltok_... 코드 붙여넣기" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       <button class="btn-sm" id="loadMembersBtn" style="margin-top:8px;width:100%;justify-content:center;">가족 목록 불러오기</button>
 
       <label>2. 본인 이름 선택</label>
-      <select id="memberSelect"><option value="">먼저 위 입장 코드를 확인해 주세요</option></select>
+      <select id="memberSelect"><option value="">입장 코드를 붙여넣으면 자동으로 열립니다</option></select>
 
       <label>3. 개인 비밀번호 (PIN)</label>
       <input id="pinInput" type="password" inputmode="numeric" placeholder="개인 PIN 입력">
 
       <button class="btn" id="loginBtn">입장 및 알림 연결하기</button>
+      <p id="loginOk" style="color:#34d399;font-size:12.5px;margin:10px 0 0 0;display:none;"></p>
       <p id="loginErr" style="color:#f87171;font-size:12.5px;margin:10px 0 0 0;"></p>
     </div>
   </div>
@@ -91,9 +93,14 @@
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0;">
         <a class="btn-sm" id="openObsRoomBtn" href="obsidian://luki-table">📲 옵시디언창</a>
-        <button class="btn-sm" id="pushSubBtn">🔔 푸시</button>
+        <button class="btn-sm" id="pushSubBtn">🔔 푸시 켜기</button>
         <button class="btn-sm" id="logoutBtn">로그아웃</button>
       </div>
+    </div>
+
+    <div class="push-guide-bar" id="pushGuideBar">
+      <span id="pushGuideTxt">🔔 잠금화면 알림을 받으려면 [푸시 켜기]를 한 번 눌러 허용해 주세요.</span>
+      <button class="btn-sm" id="pushGuideActionBtn" style="border-color:rgba(245,158,11,0.5);color:#fef08a;">지금 켜기</button>
     </div>
 
     <div class="app-body">
@@ -147,6 +154,7 @@
     const VIDEO_EXT_RE = /\.(mp4|mov|m4v|avi|mkv|webm|wmv|flv|mpeg|mpg|3gp|ogv|ts|mts|m2ts)$/i;
     let state = {
       inviteCode: localStorage.getItem('lt_invite') || '',
+      preferredMemberId: localStorage.getItem('lt_pref_member') || '',
       gatewayUrl: localStorage.getItem('lt_gw') || '',
       sessionToken: localStorage.getItem('lt_sess') || '',
       vapidPublicKey: localStorage.getItem('lt_vapid') || '',
@@ -162,56 +170,171 @@
       modalSoloMode: false
     };
 
+    function stripInvisible(str) {
+      return String(str || '').replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '');
+    }
     function hexToBytes(hex) {
       const out = new Uint8Array(hex.length / 2);
       for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
       return out;
     }
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
     function b64uDecode(str) {
-      const s = str.replace(/-/g, '+').replace(/_/g, '/');
-      const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
-      const bin = atob(s + pad);
+      const clean = String(str || '').replace(/[^A-Za-z0-9\-_+/=]/g, '').replace(/-/g, '+').replace(/_/g, '/');
+      const pad = clean.length % 4 === 0 ? '' : '='.repeat(4 - (clean.length % 4));
+      const bin = atob(clean + pad);
       const out = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
       return out;
     }
 
-    async function resolveGatewayFromInvite(inviteCode) {
-      const clean = String(inviteCode || '').trim();
-      if (!clean.startsWith('LTBL1:')) throw new Error('LTBL1: 로 시작하는 식탁 입장 코드를 입력해 주세요.');
-      const meta = JSON.parse(new TextDecoder().decode(b64uDecode(clean.slice(6))));
-      let gw = (meta.g || '').replace(/\/+$/, '');
-      if (meta.t && meta.k) {
+    // Parse #invite=...&member=... hash link if opened from shared link
+    (function consumeInviteHash() {
+      try {
+        const h = String(location.hash || '');
+        const invM = h.match(/[?#&]invite=([^&]+)/i) || (location.search || '').match(/[?&]invite=([^&]+)/i);
+        const memM = h.match(/[?#&]member=([^&]+)/i) || (location.search || '').match(/[?&]member=([^&]+)/i);
+        if (invM && invM[1]) {
+          state.inviteCode = decodeURIComponent(invM[1]).trim();
+          localStorage.setItem('lt_invite', state.inviteCode);
+        }
+        if (memM && memM[1]) {
+          state.preferredMemberId = decodeURIComponent(memM[1]).trim();
+          localStorage.setItem('lt_pref_member', state.preferredMemberId);
+        }
+        if (invM) {
+          const roomM = h.match(/room=([^&]+)/);
+          const nextHash = roomM ? ('#room=' + roomM[1]) : '';
+          history.replaceState(null, '', location.pathname + nextHash);
+        }
+      } catch (_) {}
+    })();
+
+    // Normalize any user input: lowercase ltbl1:, full text with URL, raw eyJ..., or personal ltok_... key!
+    function normalizeUserCodeInput(rawInput) {
+      let s = stripInvisible(rawInput).trim();
+      if (!s) {
+        throw new Error('식탁 입장 코드(LTBL1:... 또는 ltok_...)를 붙여넣어 주세요.');
+      }
+      try {
+        if (s.includes('invite=')) {
+          const mUrl = s.match(/invite=([^&\s#]+)/i);
+          if (mUrl && mUrl[1]) s = decodeURIComponent(mUrl[1]).trim();
+        }
+      } catch (_) {}
+
+      if (/ONH1\s*[:：]/i.test(s)) {
+        throw new Error('입력하신 ONH1: 코드는 개인 알림함(/notify/) 전용 코드입니다. 옵시디언 [설정 ➔ 루키의 식탁] 맨 위의 입장 코드(LTBL1:... 또는 ltok_...)를 넣어 주세요.');
+      }
+
+      const ltblMatch = s.match(/ltbl1\s*[:：]\s*([A-Za-z0-9+/=_\-\s]+)/i);
+      if (ltblMatch && ltblMatch[1]) {
+        const compact = ltblMatch[1].replace(/\s+/g, '');
+        return { kind: 'ltbl1', canonical: 'LTBL1:' + compact };
+      }
+
+      const ltokMatch = s.match(/(ltok_[A-Za-z0-9_-]{16,})/i);
+      if (ltokMatch && ltokMatch[1]) {
+        return { kind: 'ltok', canonical: ltokMatch[1].toLowerCase() };
+      }
+
+      const eyMatch = s.match(/(eyJ[A-Za-z0-9+/=_-]{30,})/);
+      if (eyMatch && eyMatch[1]) {
         try {
-          const r = await fetch('https://ntfy.sh/' + encodeURIComponent(meta.t) + '/json?poll=1&since=all');
+          const obj = JSON.parse(new TextDecoder().decode(b64uDecode(eyMatch[1])));
+          if (obj && (obj.t || obj.g)) {
+            return { kind: 'ltbl1', canonical: 'LTBL1:' + eyMatch[1] };
+          }
+        } catch (_) {}
+      }
+
+      throw new Error('유효한 입장 코드를 찾지 못했습니다. 옵시디언 [설정 ➔ 루키의 식탁]에서 [입장 코드 복사]를 눌러 붙여넣어 주세요 (LTBL1:... 또는 ltok_... 모두 가능).');
+    }
+
+    async function decryptBeaconLineWithRawKey(lineStr, rawKeyBytes) {
+      const obj = JSON.parse(lineStr);
+      if (!obj.message || !obj.message.startsWith('LUKIBEACON1:')) return null;
+      const p = obj.message.split(':');
+      const iv = hexToBytes(p[1]), tag = hexToBytes(p[2]), ct = hexToBytes(p[3]);
+      const comb = new Uint8Array(ct.length + tag.length);
+      comb.set(ct, 0); comb.set(tag, ct.length);
+      const ck = await crypto.subtle.importKey('raw', rawKeyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+      return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, comb)));
+    }
+
+    async function resolveGatewayFromInvite(rawInviteCode) {
+      const parsed = normalizeUserCodeInput(rawInviteCode);
+      let gw = '';
+
+      if (parsed.kind === 'ltbl1') {
+        let meta = null;
+        try {
+          meta = JSON.parse(new TextDecoder().decode(b64uDecode(parsed.canonical.slice(6))));
+        } catch (_) {
+          throw new Error('입장 코드 뒷부분이 중간에 잘렸습니다. 옵시디언 설정에서 [입장 코드 복사]를 다시 눌러 전체를 붙여넣어 주세요.');
+        }
+        gw = (meta.g || '').replace(/\/+$/, '');
+        if (meta.t && meta.k) {
+          try {
+            const r = await fetch('https://ntfy.sh/' + encodeURIComponent(meta.t) + '/json?poll=1&since=all');
+            if (r.ok) {
+              const lines = (await r.text()).trim().split('\n').reverse();
+              for (const ln of lines) {
+                try {
+                  const dec = await decryptBeaconLineWithRawKey(ln, hexToBytes(meta.k));
+                  if (dec && dec.url) { gw = dec.url.replace(/\/+$/, ''); break; }
+                } catch (_) {}
+              }
+            }
+          } catch (_) {}
+        }
+      } else if (parsed.kind === 'ltok') {
+        // Derive topic & 256-bit AES key purely from the member's high-entropy ltok_ secret!
+        try {
+          const enc = new TextEncoder();
+          const topicHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('LUKI_TOK_TOPIC_V1|' + parsed.canonical)));
+          const keyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('LUKI_TOK_KEY_V1|' + parsed.canonical)));
+          const topic = 'luki-tok-beacon-' + bytesToHex(topicHash).slice(0, 24);
+          const r = await fetch('https://ntfy.sh/' + encodeURIComponent(topic) + '/json?poll=1&since=all');
           if (r.ok) {
             const lines = (await r.text()).trim().split('\n').reverse();
             for (const ln of lines) {
               try {
-                const obj = JSON.parse(ln);
-                if (obj.message && obj.message.startsWith('LUKIBEACON1:')) {
-                  const p = obj.message.split(':');
-                  const iv = hexToBytes(p[1]), tag = hexToBytes(p[2]), ct = hexToBytes(p[3]);
-                  const comb = new Uint8Array(ct.length + tag.length);
-                  comb.set(ct, 0); comb.set(tag, ct.length);
-                  const ck = await crypto.subtle.importKey('raw', hexToBytes(meta.k), { name: 'AES-GCM' }, false, ['decrypt']);
-                  const dec = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, comb)));
-                  if (dec.url) { gw = dec.url.replace(/\/+$/, ''); break; }
+                const dec = await decryptBeaconLineWithRawKey(ln, keyBytes);
+                if (dec && dec.url) {
+                  gw = dec.url.replace(/\/+$/, '');
+                  if (dec.memberId) {
+                    state.preferredMemberId = dec.memberId;
+                    localStorage.setItem('lt_pref_member', dec.memberId);
+                  }
+                  if (dec.inviteCode) {
+                    state.canonicalInvite = dec.inviteCode;
+                  }
+                  break;
                 }
               } catch (_) {}
             }
           }
         } catch (_) {}
+        if (!gw && state.gatewayUrl) gw = state.gatewayUrl;
       }
-      if (!gw) throw new Error('서버 주소를 확인할 수 없습니다.');
+
+      if (!gw) throw new Error('서버 연결 주소를 찾지 못했습니다. 잠시 후 다시 시도하거나 옵시디언 [입장 코드 복사]를 이용해 주세요.');
       state.gatewayUrl = gw;
+      state.inviteCode = parsed.canonical;
       localStorage.setItem('lt_gw', gw);
-      return gw;
+      localStorage.setItem('lt_invite', parsed.canonical);
+      return { gw, canonical: parsed.canonical, kind: parsed.kind };
     }
 
     async function apiFetch(path, opts = {}) {
       let gw = state.gatewayUrl;
-      if (!gw && state.inviteCode) gw = await resolveGatewayFromInvite(state.inviteCode);
+      if (!gw && state.inviteCode) {
+        const resolved = await resolveGatewayFromInvite(state.inviteCode);
+        gw = resolved.gw;
+      }
       const headers = Object.assign({}, opts.headers || {});
       if (state.sessionToken) headers['X-Table-Web-Session'] = state.sessionToken;
       if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
@@ -220,85 +343,205 @@
         res = await fetch(gw + path, Object.assign({}, opts, { headers }));
       } catch (e) {
         if (state.inviteCode) {
-          gw = await resolveGatewayFromInvite(state.inviteCode);
+          const resolved = await resolveGatewayFromInvite(state.inviteCode);
+          gw = resolved.gw;
           res = await fetch(gw + path, Object.assign({}, opts, { headers }));
         } else throw e;
       }
       return res;
     }
 
-    document.getElementById('inviteInput').value = state.inviteCode;
-    document.getElementById('loadMembersBtn').onclick = async () => {
+    let loadMembersInFlight = false;
+    async function loadDirectoryFromCurrentInput(silentErr = false) {
+      if (loadMembersInFlight) return false;
       const errEl = document.getElementById('loginErr');
-      errEl.textContent = '';
+      const okEl = document.getElementById('loginOk');
+      if (!silentErr) errEl.textContent = '';
+      okEl.style.display = 'none';
+      const rawVal = document.getElementById('inviteInput').value;
+      if (!rawVal || !rawVal.trim()) return false;
+
+      loadMembersInFlight = true;
       try {
-        const code = document.getElementById('inviteInput').value.trim();
-        state.inviteCode = code;
-        localStorage.setItem('lt_invite', code);
-        await resolveGatewayFromInvite(code);
-        const r = await apiFetch('/table/public/directory', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
+        const { canonical } = await resolveGatewayFromInvite(rawVal);
+        document.getElementById('inviteInput').value = canonical;
+        const r = await apiFetch('/table/public/directory', { method: 'POST', body: JSON.stringify({ inviteCode: canonical }) });
         const d = await r.json();
         if (!d.ok) throw new Error(d.error || '코드 확인 실패');
         const sel = document.getElementById('memberSelect');
+        const prevSelected = sel.value || d.matchedMemberId || state.preferredMemberId || '';
         sel.innerHTML = '';
-        for (const m of d.members) {
+        for (const m of (d.members || [])) {
           const opt = document.createElement('option');
           opt.value = m.id;
           opt.textContent = m.name + ' (' + m.relation + ')';
+          if (prevSelected && m.id === prevSelected) opt.selected = true;
           sel.appendChild(opt);
         }
-        if (d.vapidPublicKey) { state.vapidPublicKey = d.vapidPublicKey; localStorage.setItem('lt_vapid', d.vapidPublicKey); }
+        if (d.matchedMemberId) {
+          sel.value = d.matchedMemberId;
+          state.preferredMemberId = d.matchedMemberId;
+          localStorage.setItem('lt_pref_member', d.matchedMemberId);
+        }
+        if (d.canonicalInviteCode) {
+          localStorage.setItem('lt_invite', d.canonicalInviteCode);
+        }
+        if (d.vapidPublicKey) {
+          state.vapidPublicKey = d.vapidPublicKey;
+          localStorage.setItem('lt_vapid', d.vapidPublicKey);
+        }
+        errEl.textContent = '';
+        okEl.textContent = d.matchedMemberId
+          ? '✅ 초대 키가 확인되어 본인 이름이 자동 선택되었습니다. PIN을 입력해 주세요!'
+          : '✅ 입장 코드가 확인되었습니다. 본인 이름을 고르고 PIN을 입력해 주세요!';
+        okEl.style.display = 'block';
+        return true;
       } catch (e) {
-        errEl.textContent = e.message || String(e);
+        if (!silentErr) errEl.textContent = e.message || String(e);
+        return false;
+      } finally {
+        loadMembersInFlight = false;
       }
-    };
+    }
+
+    const inviteInputEl = document.getElementById('inviteInput');
+    inviteInputEl.value = state.inviteCode;
+    document.getElementById('loadMembersBtn').onclick = () => loadDirectoryFromCurrentInput(false);
+
+    let autoDetectTimer = null;
+    inviteInputEl.addEventListener('input', () => {
+      if (autoDetectTimer) clearTimeout(autoDetectTimer);
+      const v = stripInvisible(inviteInputEl.value).trim();
+      if (/(?:ltbl1\s*[:：]\s*[A-Za-z0-9+/=_-]{24,}|ltok_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9+/=_-]{40,})/i.test(v)) {
+        autoDetectTimer = setTimeout(() => { loadDirectoryFromCurrentInput(true); }, 180);
+      }
+    });
+
+    if (state.inviteCode && !state.sessionToken) {
+      setTimeout(() => { loadDirectoryFromCurrentInput(true); }, 80);
+    }
 
     document.getElementById('loginBtn').onclick = async () => {
       const errEl = document.getElementById('loginErr');
+      const okEl = document.getElementById('loginOk');
       errEl.textContent = '';
+      okEl.style.display = 'none';
+
+      // Trigger iOS/Mobile notification permission prompt synchronously inside the direct user tap gesture!
+      let preRequestedPerm = '';
       try {
-        const code = document.getElementById('inviteInput').value.trim();
-        const memberId = document.getElementById('memberSelect').value;
+        if ('Notification' in window && Notification.permission === 'default') {
+          preRequestedPerm = await Notification.requestPermission();
+        }
+      } catch (_) {}
+
+      try {
+        const rawCode = inviteInputEl.value.trim();
         const pin = document.getElementById('pinInput').value.trim();
-        if (!code || !memberId || !pin) throw new Error('입장 코드, 이름 선택, 개인 PIN을 모두 입력해 주세요.');
-        state.inviteCode = code;
-        localStorage.setItem('lt_invite', code);
-        await resolveGatewayFromInvite(code);
-        const r = await apiFetch('/table/auth/login', { method: 'POST', body: JSON.stringify({ inviteCode: code, memberId, pin }) });
+        if (!rawCode) throw new Error('식탁 입장 코드를 입력해 주세요.');
+        if (!pin) throw new Error('개인 비밀번호(PIN)를 입력해 주세요.');
+
+        const { canonical } = await resolveGatewayFromInvite(rawCode);
+        inviteInputEl.value = canonical;
+
+        let memberId = document.getElementById('memberSelect').value;
+        if (!memberId) {
+          await loadDirectoryFromCurrentInput(false);
+          memberId = document.getElementById('memberSelect').value || state.preferredMemberId || '';
+        }
+        if (!memberId) throw new Error('본인 이름을 선택해 주세요.');
+
+        state.preferredMemberId = memberId;
+        localStorage.setItem('lt_pref_member', memberId);
+
+        const r = await apiFetch('/table/auth/login', { method: 'POST', body: JSON.stringify({ inviteCode: canonical, memberId, pin }) });
         const d = await r.json();
         if (!d.ok) throw new Error(d.error || '로그인 실패');
         state.sessionToken = d.sessionToken;
         localStorage.setItem('lt_sess', d.sessionToken);
+        if (d.canonicalInviteCode) {
+          state.inviteCode = d.canonicalInviteCode;
+          localStorage.setItem('lt_invite', d.canonicalInviteCode);
+        }
         if (d.vapidPublicKey) { state.vapidPublicKey = d.vapidPublicKey; localStorage.setItem('lt_vapid', d.vapidPublicKey); }
         await enterChatApp();
-        subscribeTablePush(true);
+        await subscribeTablePush(true, preRequestedPerm);
+        await refreshPushUiState();
       } catch (e) {
         errEl.textContent = e.message || String(e);
       }
     };
 
-    async function subscribeTablePush(silent = false) {
+    async function refreshPushUiState() {
+      const btn = document.getElementById('pushSubBtn');
+      const bar = document.getElementById('pushGuideBar');
+      const txt = document.getElementById('pushGuideTxt');
+      const act = document.getElementById('pushGuideActionBtn');
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          btn.textContent = '🔔 홈화면 추가 필요';
+          txt.textContent = '📲 아이폰·휴대폰에서는 브라우저 공유 메뉴의 [홈 화면에 추가]로 만든 아이콘에서 열어야 알림을 받습니다.';
+          act.style.display = 'none';
+          bar.style.display = 'flex';
+          return;
+        }
+        const reg = await navigator.serviceWorker.getRegistration('./');
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && sub) {
+          btn.textContent = '🔔 알림 켜짐';
+          btn.style.borderColor = 'rgba(16,185,129,0.5)';
+          bar.style.display = 'none';
+        } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+          btn.textContent = '🔕 알림 차단됨';
+          txt.textContent = '⚠️ 기기 설정에서 이 웹앱의 알림이 꺼져 있습니다. 설정에서 알림을 허용한 뒤 [다시 연결]을 눌러 주세요.';
+          act.textContent = '다시 연결';
+          act.style.display = 'inline-flex';
+          bar.style.display = 'flex';
+        } else {
+          btn.textContent = '🔔 푸시 켜기';
+          btn.style.borderColor = '';
+          txt.textContent = '🔔 실시간 잠금화면 알림이 아직 켜지지 않았습니다. 오른쪽 [지금 켜기]를 한 번 눌러 허용해 주세요!';
+          act.textContent = '지금 켜기';
+          act.style.display = 'inline-flex';
+          bar.style.display = 'flex';
+        }
+      } catch (_) {}
+    }
+
+    async function subscribeTablePush(silent = false, existingPerm = '') {
       try {
         if (!('serviceWorker' in navigator) || !('PushManager' in window) || !state.vapidPublicKey) {
-          if (!silent) alert('홈 화면에 추가한 앱에서 실행해 주세요.');
+          if (!silent) alert('사파리·크롬 공유 메뉴에서 [홈 화면에 추가]한 뒤 바탕화면 아이콘으로 열어 실행해 주세요.');
+          await refreshPushUiState();
+          return;
+        }
+        // Request permission BEFORE awaiting serviceWorker ready so iOS preserves user activation!
+        let perm = existingPerm || (typeof Notification !== 'undefined' ? Notification.permission : 'default');
+        if (perm !== 'granted') {
+          perm = await Notification.requestPermission();
+        }
+        if (perm !== 'granted') {
+          if (!silent) alert('알림 권한이 허용되지 않았습니다. 기기 설정에서 알림을 허용해 주세요.');
+          await refreshPushUiState();
           return;
         }
         const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
         await navigator.serviceWorker.ready;
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') return;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
           sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uDecode(state.vapidPublicKey) });
         }
         await apiFetch('/table/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON(), userAgent: navigator.userAgent }) });
+        await refreshPushUiState();
         if (!silent) alert('✅ 참여 중인 방의 실시간 잠금화면 알림이 켜졌습니다!');
       } catch (e) {
+        await refreshPushUiState();
         if (!silent) alert('알림 설정 안내: ' + (e.message || e));
       }
     }
 
     document.getElementById('pushSubBtn').onclick = () => subscribeTablePush(false);
+    document.getElementById('pushGuideActionBtn').onclick = () => subscribeTablePush(false);
     document.getElementById('logoutBtn').onclick = () => {
       localStorage.removeItem('lt_sess');
       location.reload();
@@ -703,10 +946,14 @@
       renderRooms();
       sendReadForActiveRoom();
       connectWs();
+      refreshPushUiState();
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && state.me) sendReadForActiveRoom();
+      if (document.visibilityState === 'visible' && state.me) {
+        sendReadForActiveRoom();
+        refreshPushUiState();
+      }
     });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
