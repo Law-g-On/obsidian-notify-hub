@@ -31,7 +31,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (ev) => ev.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
-  let data = { title: '🔔 옵시디언 개인 알림', body: '새 알림이 도착했습니다.', channel: '개인 알림', notePath: '', vault: '' };
+  let data = { title: '🔔 옵시디언 개인 알림', body: '새 알림이 도착했습니다.', channel: '개인 알림', notePath: '', vault: '', actionKind: '' };
   try {
     if (event.data) data = Object.assign(data, event.data.json());
   } catch (_) {
@@ -44,6 +44,7 @@ self.addEventListener('push', (event) => {
     channel: data.channel || '개인 알림',
     notePath: data.notePath || '',
     vault: data.vault || '',
+    actionKind: data.actionKind || '',
     ts: data.ts || Date.now(),
     read: false
   };
@@ -66,6 +67,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const info = event.notification.data || {};
+  const targetHash = '#focus=' + encodeURIComponent(info.id || 'latest');
   event.waitUntil((async () => {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (list.length > 0) {
@@ -73,6 +75,6 @@ self.addEventListener('notificationclick', (event) => {
       list[0].postMessage({ type: 'FOCUS_ITEM', item: info });
       return;
     }
-    await self.clients.openWindow('./');
+    await self.clients.openWindow('./' + targetHash);
   })());
 });
