@@ -108,7 +108,7 @@
         <div class="sb-head">
           <input id="roomSearchInp" type="text" placeholder="🔍 대화방 검색..." style="padding:7px 10px;font-size:12.5px;">
           <div class="sb-btns">
-            <button class="btn-sm" id="newSoloBtn" style="justify-content:center;">🌿 + 나·루키 1:1</button>
+            <button class="btn-sm" id="newSoloBtn" style="justify-content:center;">🪶 + 나·루키 1:1</button>
             <button class="btn-sm" id="newGroupBtn" style="justify-content:center;">👥 + 가족 대화방</button>
           </div>
         </div>
@@ -559,7 +559,7 @@
     function openCreateModal(soloMode) {
       state.modalSoloMode = soloMode;
       document.getElementById('newRoomTitleInp').value = '';
-      document.getElementById('modalTitle').textContent = soloMode ? '🌿 나와 루키 1:1 새 대화방' : '👥 가족 소모임 새 대화방';
+      document.getElementById('modalTitle').textContent = soloMode ? '🪶 나와 루키 1:1 새 대화방' : '👥 가족 소모임 새 대화방';
       document.getElementById('modalDesc').textContent = soloMode
         ? '다른 가족 누구에게도 보이지 않는 나만의 별개 루키 대화방을 새로 엽니다.'
         : '선택한 가족들과 루키만 참여하며, 선택하지 않은 가족에게는 방이 보이지 않습니다.';
@@ -635,7 +635,7 @@
 
     function syncTopbarRoomInfo() {
       const room = state.rooms.find(r => r.id === state.activeRoomId);
-      const rTitle = room ? (room.isPrivateSolo && room.title === '나의 식탁방' ? '🌿 나의 식탁방' : room.title) : '루키의 식탁';
+      const rTitle = room ? (room.isPrivateSolo && room.title === '나의 식탁방' ? '🪶 나의 식탁방' : room.title) : '루키의 식탁';
       document.getElementById('curRoomTitleLbl').textContent = rTitle;
       document.getElementById('openObsRoomBtn').href = 'obsidian://luki-table' + (room ? ('?room=' + encodeURIComponent(room.id)) : '');
       let totalUnread = 0;
@@ -682,7 +682,7 @@
         if (state.roomSearch && !dispTitle.toLowerCase().includes(state.roomSearch)) continue;
         const lastM = (r.messages && r.messages.length) ? r.messages[r.messages.length - 1] : null;
         const unreadCnt = countMyUnreadInRoom(r);
-        const ava = r.isPrivateSolo ? '🌿' : (r.type === 'living' ? '🏠' : ((r.members || []).length <= 2 ? '💬' : '👥'));
+        const ava = r.isPrivateSolo ? '🪶' : (r.type === 'living' ? '🏠' : ((r.members || []).length <= 2 ? '💬' : '👥'));
         const prevTxt = state.liveStreams[r.id]
           ? '🪶 루키 답변 작성 중⋯'
           : (lastM
