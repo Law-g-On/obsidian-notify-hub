@@ -12,18 +12,36 @@
   <title>🍽️ 루키의 식탁</title>
   <style>
     :root { --bg:#0b0d13; --panel:#141923; --card:#1b2230; --border:rgba(255,255,255,0.1); --accent:#10b981; --text:#f8fafc; --muted:#94a3b8; }
-    * { box-sizing:border-box; }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
     .login-wrap { max-width:420px; width:100%; margin:auto; padding:24px 18px; }
     .card { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:20px; }
     label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px 0; font-weight:600; }
     input, select, textarea { width:100%; background:#0b0e14; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:14px; }
-    .btn { background:var(--accent); color:#042f2e; border:none; border-radius:10px; padding:11px 14px; font-weight:700; font-size:14px; cursor:pointer; width:100%; margin-top:14px; }
-    .btn-sm { background:rgba(255,255,255,0.07); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; }
-    .topbar { padding:calc(env(safe-area-inset-top,10px) + 8px) 12px 8px 12px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px; }
-    .roombar { display:flex; gap:6px; overflow-x:auto; padding:7px 10px; background:#0f131c; border-bottom:1px solid var(--border); flex-shrink:0; }
-    .rtab { padding:5px 11px; border-radius:999px; border:1px solid var(--border); background:var(--panel); color:var(--muted); font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; }
-    .rtab.active { background:var(--accent); color:#042f2e; border-color:var(--accent); }
+    .btn { background:var(--accent); color:#042f2e; border:none; border-radius:10px; padding:11px 14px; font-weight:700; font-size:14px; cursor:pointer; width:100%; margin-top:14px; text-decoration:none; display:inline-flex; justify-content:center; align-items:center; }
+    .btn-sm { background:rgba(255,255,255,0.07); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+    .topbar { padding:calc(env(safe-area-inset-top,10px) + 8px) 12px 8px 12px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0; }
+    .app-body { flex:1; display:flex; min-height:0; position:relative; overflow:hidden; }
+    .sidebar { width:270px; background:#0f131c; border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; flex-shrink:0; }
+    .sb-head { padding:9px 10px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:7px; }
+    .sb-btns { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .room-list { flex:1; overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:4px; }
+    .r-item { display:flex; align-items:center; gap:9px; padding:10px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
+    .r-item:hover { background:rgba(255,255,255,0.04); }
+    .r-item.active { background:rgba(16,185,129,0.14); border-color:rgba(16,185,129,0.38); }
+    .r-ava { width:36px; height:36px; border-radius:11px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+    .r-main { flex:1; min-width:0; }
+    .r-row1 { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:3px; }
+    .r-title { font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .r-time { font-size:10.5px; color:var(--muted); flex-shrink:0; }
+    .r-row2 { display:flex; justify-content:space-between; align-items:center; gap:6px; }
+    .r-prev { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .r-badge { background:#ef4444; color:#fff; font-size:10.5px; font-weight:800; border-radius:999px; padding:1px 6px; flex-shrink:0; }
+    .chat-pane { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
+    @media (max-width: 680px) {
+      .sidebar { position:absolute; inset:0; width:100%; z-index:30; display:none; }
+      .sidebar.open { display:flex; }
+    }
     .msgs { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:11px; }
     .msg { display:flex; flex-direction:column; gap:3px; }
     .msg.mine { align-items:flex-end; }
@@ -39,6 +57,10 @@
     .att-chip { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.4); padding:3px 8px; border-radius:7px; margin-right:5px; }
     .att-box { margin-top:7px; display:flex; flex-direction:column; gap:6px; }
     .att-box img { max-width:220px; border-radius:8px; border:1px solid var(--border); }
+    .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:60; display:none; align-items:center; justify-content:center; padding:16px; }
+    .modal-bg.open { display:flex; }
+    .chk-row { display:flex; align-items:center; gap:8px; padding:7px 0; font-size:13.5px; }
+    .chk-row input { width:18px; height:18px; }
   </style>
 </head>
 <body>
@@ -48,7 +70,7 @@
       <p style="margin:0 0 12px 0;font-size:12.5px;color:#94a3b8;line-height:1.5;">가족 입장 코드와 본인 비밀번호(PIN)로 로그인하세요. 홈 화면에 추가해 두면 참여한 방의 새 톡 알림을 실시간으로 받습니다.</p>
       <label>1. 식탁 입장 코드</label>
       <input id="inviteInput" type="text" placeholder="LTBL1:... 코드를 붙여넣으세요" autocomplete="off">
-      <button class="btn-sm" id="loadMembersBtn" style="margin-top:8px;width:100%;">가족 목록 불러오기</button>
+      <button class="btn-sm" id="loadMembersBtn" style="margin-top:8px;width:100%;justify-content:center;">가족 목록 불러오기</button>
 
       <label>2. 본인 이름 선택</label>
       <select id="memberSelect"><option value="">먼저 위 입장 코드를 확인해 주세요</option></select>
@@ -63,28 +85,60 @@
 
   <div id="chatScreen" style="display:none;height:100%;flex-direction:column;">
     <div class="topbar">
-      <div style="font-weight:700;font-size:14px;"><span id="wsDot" style="color:#94a3b8;">●</span> 🍽️ <span id="meNameLbl">식탁</span></div>
-      <div style="display:flex;gap:5px;">
-        <button class="btn-sm" id="pushSubBtn">🔔 푸시 켜기</button>
-        <button class="btn-sm" id="pinChgBtn">PIN 변경</button>
+      <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+        <button class="btn-sm" id="toggleListBtn">☰ 목록</button>
+        <div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span id="wsDot" style="color:#94a3b8;">●</span> <span id="curRoomTitleLbl">루키의 식탁</span></div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0;">
+        <a class="btn-sm" id="openObsRoomBtn" href="obsidian://luki-table">📲 옵시디언창</a>
+        <button class="btn-sm" id="pushSubBtn">🔔 푸시</button>
         <button class="btn-sm" id="logoutBtn">로그아웃</button>
       </div>
     </div>
-    <div class="roombar" id="roomBar"></div>
-    <div class="msgs" id="msgList"></div>
-    <div class="composer">
-      <div id="pendingAttBar" style="display:none;flex-wrap:wrap;gap:4px;"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:5px;align-items:center;">
-          <button class="btn-sm" id="lukiToggleBtn">🪶 @루키 부르기</button>
-          <button class="btn-sm" id="attachBtn">📎 사진·문서</button>
-          <input type="file" id="filePicker" style="display:none;" accept="image/*,.pdf,.txt,.md,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip">
+
+    <div class="app-body">
+      <div class="sidebar" id="roomSidebar">
+        <div class="sb-head">
+          <input id="roomSearchInp" type="text" placeholder="🔍 대화방 검색..." style="padding:7px 10px;font-size:12.5px;">
+          <div class="sb-btns">
+            <button class="btn-sm" id="newSoloBtn" style="justify-content:center;">🌿 + 나·루키 1:1</button>
+            <button class="btn-sm" id="newGroupBtn" style="justify-content:center;">👥 + 가족 대화방</button>
+          </div>
         </div>
-        <span id="typingLbl" style="font-size:11px;color:#34d399;"></span>
+        <div class="room-list" id="roomList"></div>
       </div>
-      <div class="comp-row">
-        <textarea id="chatInput" rows="2" placeholder="메시지 입력..." style="flex:1;resize:none;"></textarea>
-        <button class="btn" id="sendBtn" style="width:auto;margin:0;padding:10px 15px;">전송</button>
+
+      <div class="chat-pane">
+        <div class="msgs" id="msgList"></div>
+        <div class="composer">
+          <div id="pendingAttBar" style="display:none;flex-wrap:wrap;gap:4px;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;gap:5px;align-items:center;">
+              <button class="btn-sm" id="lukiToggleBtn">🪶 @루키 부르기</button>
+              <button class="btn-sm" id="attachBtn">📎 사진·문서</button>
+              <input type="file" id="filePicker" style="display:none;" accept="image/*,.pdf,.txt,.md,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip">
+            </div>
+            <span id="typingLbl" style="font-size:11px;color:#34d399;"></span>
+          </div>
+          <div class="comp-row">
+            <textarea id="chatInput" rows="2" placeholder="메시지 입력..." style="flex:1;resize:none;"></textarea>
+            <button class="btn" id="sendBtn" style="width:auto;margin:0;padding:10px 15px;">전송</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="newRoomModal">
+    <div class="card" style="width:100%;max-width:380px;">
+      <h3 id="modalTitle" style="margin:0 0 8px 0;font-size:16px;">새 대화방 열기</h3>
+      <p id="modalDesc" style="margin:0 0 10px 0;font-size:12px;color:#94a3b8;line-height:1.45;"></p>
+      <label>대화방 이름 (비워 두면 자동 생성)</label>
+      <input id="newRoomTitleInp" type="text" placeholder="예: 말씀 묵상 노트 / 주말 모임">
+      <div id="memberChkBox" style="margin-top:10px;max-height:180px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn-sm" id="cancelModalBtn" style="flex:1;justify-content:center;padding:10px;">취소</button>
+        <button class="btn" id="confirmModalBtn" style="flex:2;margin:0;">대화방 열기</button>
       </div>
     </div>
   </div>
@@ -97,12 +151,15 @@
       sessionToken: localStorage.getItem('lt_sess') || '',
       vapidPublicKey: localStorage.getItem('lt_vapid') || '',
       me: null,
+      familyDirectory: [],
       rooms: [],
       activeRoomId: 'room_living',
+      roomSearch: '',
       ws: null,
       invokeLuki: false,
       liveStreams: {},
-      pendingAtts: []
+      pendingAtts: [],
+      modalSoloMode: false
     };
 
     function hexToBytes(hex) {
@@ -242,16 +299,68 @@
     }
 
     document.getElementById('pushSubBtn').onclick = () => subscribeTablePush(false);
-    document.getElementById('pinChgBtn').onclick = async () => {
-      const np = prompt('새 개인 비밀번호(PIN 4~16자리)를 입력하세요:');
-      if (!np) return;
-      const r = await apiFetch('/table/profile/pin', { method: 'POST', body: JSON.stringify({ newPin: np.trim() }) });
-      const d = await r.json();
-      alert(d.ok ? '비밀번호가 변경되었습니다.' : (d.error || '변경 실패'));
-    };
     document.getElementById('logoutBtn').onclick = () => {
       localStorage.removeItem('lt_sess');
       location.reload();
+    };
+
+    const roomSidebar = document.getElementById('roomSidebar');
+    document.getElementById('toggleListBtn').onclick = () => {
+      roomSidebar.classList.toggle('open');
+    };
+    document.getElementById('roomSearchInp').oninput = (ev) => {
+      state.roomSearch = ev.target.value.trim().toLowerCase();
+      renderRooms();
+    };
+
+    function openCreateModal(soloMode) {
+      state.modalSoloMode = soloMode;
+      document.getElementById('newRoomTitleInp').value = '';
+      document.getElementById('modalTitle').textContent = soloMode ? '🌿 나와 루키 1:1 새 대화방' : '👥 가족 소모임 새 대화방';
+      document.getElementById('modalDesc').textContent = soloMode
+        ? '다른 가족 누구에게도 보이지 않는 나만의 별개 루키 대화방을 새로 엽니다.'
+        : '선택한 가족들과 루키만 참여하며, 선택하지 않은 가족에게는 방이 보이지 않습니다.';
+      const box = document.getElementById('memberChkBox');
+      box.innerHTML = '';
+      if (!soloMode) {
+        for (const m of (state.familyDirectory || [])) {
+          if (state.me && m.id === state.me.id) continue;
+          const lbl = document.createElement('label');
+          lbl.className = 'chk-row';
+          lbl.innerHTML = '<input type="checkbox" value="' + m.id + '"> <span>' + m.name + ' (' + m.relation + ')</span>';
+          box.appendChild(lbl);
+        }
+      }
+      document.getElementById('newRoomModal').classList.add('open');
+    }
+    document.getElementById('newSoloBtn').onclick = () => openCreateModal(true);
+    document.getElementById('newGroupBtn').onclick = () => openCreateModal(false);
+    document.getElementById('cancelModalBtn').onclick = () => document.getElementById('newRoomModal').classList.remove('open');
+    document.getElementById('confirmModalBtn').onclick = async () => {
+      const title = document.getElementById('newRoomTitleInp').value.trim();
+      const members = state.modalSoloMode
+        ? []
+        : Array.from(document.querySelectorAll('#memberChkBox input:checked')).map(el => el.value);
+      if (!state.modalSoloMode && members.length === 0) {
+        alert('함께할 가족을 한 분 이상 선택해 주세요 (혼자 루키와 대화하려면 [나·루키 1:1]을 눌러 주세요).');
+        return;
+      }
+      const r = await apiFetch('/table/rooms/create', {
+        method: 'POST',
+        body: JSON.stringify({ title, members, isPrivateSolo: state.modalSoloMode })
+      });
+      const d = await r.json();
+      if (!d.ok) return alert(d.error || '개설 실패');
+      document.getElementById('newRoomModal').classList.remove('open');
+      const br = await apiFetch('/table/bootstrap?sinceSeq=0');
+      const bd = await br.json();
+      if (bd.ok) state.rooms = bd.rooms || [];
+      state.activeRoomId = d.roomId;
+      roomSidebar.classList.remove('open');
+      state.invokeLuki = Boolean(state.modalSoloMode);
+      syncLukiBtn();
+      renderRooms();
+      sendReadForActiveRoom();
     };
 
     function computeUnread(room, m) {
@@ -261,9 +370,43 @@
       return Math.max(0, mIds.length - reads.length);
     }
 
+    function countMyUnreadInRoom(room) {
+      if (!room || !state.me || room.id === state.activeRoomId) return 0;
+      let cnt = 0;
+      for (const m of (room.messages || [])) {
+        if (m.senderId === state.me.id) continue;
+        if (!Array.isArray(m.readBy) || !m.readBy.includes(state.me.id)) cnt++;
+      }
+      return cnt;
+    }
+
+    function fmtRoomTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      }
+      return (d.getMonth() + 1) + '. ' + d.getDate() + '.';
+    }
+
+    function syncTopbarRoomInfo() {
+      const room = state.rooms.find(r => r.id === state.activeRoomId);
+      const rTitle = room ? (room.isPrivateSolo && room.title === '나의 식탁방' ? '🌿 나의 식탁방' : room.title) : '루키의 식탁';
+      document.getElementById('curRoomTitleLbl').textContent = rTitle;
+      document.getElementById('openObsRoomBtn').href = 'obsidian://luki-table' + (room ? ('?room=' + encodeURIComponent(room.id)) : '');
+      let totalUnread = 0;
+      for (const r of state.rooms) totalUnread += countMyUnreadInRoom(r);
+      document.getElementById('toggleListBtn').textContent = totalUnread > 0 ? ('☰ 목록 (' + totalUnread + ')') : '☰ 목록';
+    }
+
     function sendReadForActiveRoom() {
       const room = state.rooms.find(r => r.id === state.activeRoomId);
-      if (!room || room.isPrivateSolo || document.visibilityState === 'hidden') return;
+      syncTopbarRoomInfo();
+      if (!room || room.isPrivateSolo || document.visibilityState === 'hidden') {
+        renderMessages();
+        return;
+      }
       let maxSeq = 0, maxTs = 0;
       for (const m of (room.messages || [])) {
         if (!Array.isArray(m.readBy)) m.readBy = [];
@@ -277,24 +420,51 @@
       } else {
         apiFetch('/table/read', { method: 'POST', body: JSON.stringify({ roomId: room.id, upToSeq: maxSeq, upToCreatedAt: maxTs }) }).catch(() => {});
       }
+      renderRooms();
       renderMessages();
     }
 
     function renderRooms() {
-      const bar = document.getElementById('roomBar');
-      bar.innerHTML = '';
-      for (const r of state.rooms) {
-        const b = document.createElement('button');
-        b.className = 'rtab' + (r.id === state.activeRoomId ? ' active' : '');
-        b.textContent = r.isPrivateSolo ? '🌿 나의 식탁방' : r.title;
-        b.onclick = () => {
+      syncTopbarRoomInfo();
+      const box = document.getElementById('roomList');
+      box.innerHTML = '';
+      const sorted = state.rooms.slice().sort((a, b) => {
+        const la = (a.messages && a.messages.length) ? (a.messages[a.messages.length - 1].createdAt || 0) : 0;
+        const lb = (b.messages && b.messages.length) ? (b.messages[b.messages.length - 1].createdAt || 0) : 0;
+        if (lb !== la) return lb - la;
+        return 0;
+      });
+      for (const r of sorted) {
+        const dispTitle = r.isPrivateSolo && r.title === '나의 식탁방' ? '나의 식탁방 (1:1)' : r.title;
+        if (state.roomSearch && !dispTitle.toLowerCase().includes(state.roomSearch)) continue;
+        const lastM = (r.messages && r.messages.length) ? r.messages[r.messages.length - 1] : null;
+        const unreadCnt = countMyUnreadInRoom(r);
+        const ava = r.isPrivateSolo ? '🌿' : (r.type === 'living' ? '🏠' : ((r.members || []).length <= 2 ? '💬' : '👥'));
+        const prevTxt = state.liveStreams[r.id]
+          ? '🪶 루키 답변 작성 중⋯'
+          : (lastM
+              ? ((lastM.role === 'assistant' ? '루키: ' : (lastM.senderName + ': ')) + String(lastM.text || '첨부파일').replace(/\s+/g, ' ').slice(0, 36))
+              : (r.isPrivateSolo ? '나와 루키의 일대일 대화방' : '대화를 시작해 보세요'));
+
+        const item = document.createElement('div');
+        item.className = 'r-item' + (r.id === state.activeRoomId ? ' active' : '');
+        item.innerHTML = '<div class="r-ava">' + ava + '</div>'
+          + '<div class="r-main">'
+          +   '<div class="r-row1"><span class="r-title"></span><span class="r-time"></span></div>'
+          +   '<div class="r-row2"><span class="r-prev"></span>' + (unreadCnt > 0 ? ('<span class="r-badge">' + unreadCnt + '</span>') : '') + '</div>'
+          + '</div>';
+        item.querySelector('.r-title').textContent = dispTitle;
+        item.querySelector('.r-time').textContent = lastM ? fmtRoomTime(lastM.createdAt) : '';
+        item.querySelector('.r-prev').textContent = prevTxt;
+        item.onclick = () => {
           state.activeRoomId = r.id;
           state.invokeLuki = Boolean(r.isPrivateSolo);
+          roomSidebar.classList.remove('open');
           syncLukiBtn();
           renderRooms();
           sendReadForActiveRoom();
         };
-        bar.appendChild(b);
+        box.appendChild(item);
       }
     }
 
@@ -404,8 +574,14 @@
         try {
           const pkt = JSON.parse(ev.data);
           const d = pkt.data;
-          if (pkt.event === 'assistant_start') {
+          if (pkt.event === 'room_created') {
+            if (!state.rooms.find(x => x.id === d.id)) {
+              state.rooms.push(d);
+              renderRooms();
+            }
+          } else if (pkt.event === 'assistant_start') {
             state.liveStreams[d.roomId] = { status: '생각 정리 중...', text: '' };
+            renderRooms();
             if (d.roomId === state.activeRoomId) renderMessages();
           } else if (pkt.event === 'assistant_stream') {
             state.liveStreams[d.roomId] = { status: d.status, text: d.text || '' };
@@ -416,6 +592,7 @@
             if (r) {
               const idx = r.messages.findIndex(x => x.id === d.id);
               if (idx >= 0) r.messages[idx] = d; else r.messages.push(d);
+              renderRooms();
               if (r.id === state.activeRoomId && document.visibilityState === 'visible') sendReadForActiveRoom();
               else renderMessages();
             }
@@ -511,6 +688,7 @@
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || '세션 만료');
       state.me = d.me;
+      state.familyDirectory = d.familyDirectory || [];
       state.rooms = d.rooms || [];
       if (d.vapidPublicKey) state.vapidPublicKey = d.vapidPublicKey;
       const hashM = location.hash.match(/room=([^&]+)/);
@@ -519,7 +697,9 @@
 
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('chatScreen').style.display = 'flex';
-      document.getElementById('meNameLbl').textContent = state.me.name;
+      const curRoom = state.rooms.find(x => x.id === state.activeRoomId);
+      state.invokeLuki = Boolean(curRoom?.isPrivateSolo);
+      syncLukiBtn();
       renderRooms();
       sendReadForActiveRoom();
       connectWs();
@@ -533,6 +713,7 @@
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data?.type === 'OPEN_TABLE_ROOM' && ev.data.roomId) {
           state.activeRoomId = ev.data.roomId;
+          roomSidebar.classList.remove('open');
           renderRooms();
           sendReadForActiveRoom();
         }
