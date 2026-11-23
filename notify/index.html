@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="개인 알림함">
+  <meta name="theme-color" content="#0b0d13">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <title>🔔 옵시디언 개인 알림함</title>
+  <style>
+    :root { --bg:#0b0d13; --card:#161b26; --border:rgba(255,255,255,0.09); --accent:#10b981; --text:#f8fafc; --muted:#94a3b8; }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); margin:0; padding:calc(env(safe-area-inset-top,16px) + 12px) 16px 40px 16px; max-width:520px; margin-inline:auto; }
+    .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+    .hdr h1 { font-size:18px; margin:0; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
+    .btn { background:var(--accent); color:#042f2e; font-weight:700; border:none; border-radius:10px; padding:10px 14px; font-size:13.5px; cursor:pointer; width:100%; }
+    .btn-sec { background:rgba(255,255,255,0.07); color:var(--text); font-weight:600; border:1px solid var(--border); border-radius:9px; padding:7px 11px; font-size:12px; cursor:pointer; }
+    .code-box { font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#090b10; border:1px solid var(--border); border-radius:10px; padding:10px; word-break:break-all; color:#34d399; margin:10px 0; max-height:92px; overflow-y:auto; }
+    .item { border-bottom:1px solid var(--border); padding:12px 0; }
+    .item:last-child { border-bottom:none; }
+    .meta { font-size:11px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px; }
+    .badge { color:#34d399; font-weight:700; }
+    .title { font-size:14.5px; font-weight:700; margin-bottom:4px; }
+    .body { font-size:13px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; }
+    .hint { font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <h1>🔔 개인 알림함</h1>
+    <button class="btn-sec" id="clearAllBtn">비우기</button>
+  </div>
+
+  <div class="card" id="setupCard">
+    <p class="hint" id="setupHint">1. 사파리/크롬 공유 메뉴에서 <strong>홈 화면에 추가</strong>한 뒤 바탕화면 아이콘으로 여세요.<br>2. 아래 단추를 눌러 내 기기 전용 암호화 연결 코드를 복사해 데스크탑 옵시디언 <strong>개인 알림 허브</strong> 설정에 붙여넣으세요.</p>
+    <button class="btn" id="pairBtn">🔐 알림 켜기 및 기기 연결 코드 발급</button>
+    <div id="codeWrap" style="display:none;">
+      <div class="code-box" id="pairCodeBox"></div>
+      <button class="btn-sec" id="copyCodeBtn" style="width:100%;">📋 연결 코드 복사하기</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong style="font-size:14px;">최근 도착한 개인 알림</strong>
+      <span id="countLbl" style="font-size:12px;color:#94a3b8;">0건</span>
+    </div>
+    <div id="listBox"><p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p></div>
+  </div>
+
+  <script>
+    const DB_NAME = 'obsidian_personal_notify_db';
+    const STORE = 'items';
+    const DEEP_SCHEME = 'obsidian://open';
+
+    function b64uEncode(bytes) {
+      let bin = '';
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+    function b64uDecode(str) {
+      const s = str.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+      const bin = atob(s + pad);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+
+    async function getOrCreateLocalVapidKeys() {
+      const saved = localStorage.getItem('onh_vapid_v1');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (_) {}
+      }
+      const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+      const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      const x = b64uDecode(jwk.x);
+      const y = b64uDecode(jwk.y);
+      const pubUncompressed = new Uint8Array(65);
+      pubUncompressed[0] = 0x04;
+      pubUncompressed.set(x, 1);
+      pubUncompressed.set(y, 33);
+      const keys = { publicKey: b64uEncode(pubUncompressed), privateKey: jwk.d };
+      localStorage.setItem('onh_vapid_v1', JSON.stringify(keys));
+      return keys;
+    }
+
+    async function openDb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function renderItems() {
+      const db = await openDb();
+      const items = await new Promise((res) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => res(req.result || []);
+        req.onerror = () => res([]);
+      });
+      items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      document.getElementById('countLbl').textContent = items.length + '건';
+      const box = document.getElementById('listBox');
+      if (items.length === 0) {
+        box.innerHTML = '<p class="hint" style="margin:8px 0;">아직 도착한 알림이 없습니다.</p>';
+        return;
+      }
+      box.innerHTML = '';
+      for (const it of items) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const timeStr = new Date(it.ts || Date.now()).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const ch = document.createElement('span');
+        ch.className = 'badge';
+        ch.textContent = it.channel || '개인 알림';
+        const tm = document.createElement('span');
+        tm.textContent = timeStr;
+        meta.append(ch, tm);
+
+        const tt = document.createElement('div');
+        tt.className = 'title';
+        tt.textContent = it.title || '알림';
+
+        const bd = document.createElement('div');
+        bd.className = 'body';
+        bd.textContent = it.body || '';
+
+        div.append(meta, tt, bd);
+        if (it.notePath) {
+          const openBtn = document.createElement('button');
+          openBtn.className = 'btn-sec';
+          openBtn.style.marginTop = '8px';
+          openBtn.textContent = '📖 옵시디언에서 노트 열기';
+          openBtn.onclick = () => {
+            const q = it.vault ? ('vault=' + encodeURIComponent(it.vault) + '&file=' + encodeURIComponent(it.notePath)) : ('file=' + encodeURIComponent(it.notePath));
+            location.href = DEEP_SCHEME + '?' + q;
+          };
+          div.appendChild(openBtn);
+        }
+        box.appendChild(div);
+      }
+    }
+
+    document.getElementById('clearAllBtn').onclick = async () => {
+      const db = await openDb();
+      await new Promise((res) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).clear();
+        tx.oncomplete = () => res();
+      });
+      renderItems();
+    };
+
+    let latestPairingCode = localStorage.getItem('onh_pairing_code') || '';
+    if (latestPairingCode) {
+      document.getElementById('pairCodeBox').textContent = latestPairingCode;
+      document.getElementById('codeWrap').style.display = 'block';
+    }
+
+    document.getElementById('pairBtn').onclick = async () => {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          alert('이 화면을 먼저 홈 화면에 추가한 뒤 바탕화면 아이콘으로 열어 주세요 (iOS 16.4+ / Android 지원).');
+          return;
+        }
+        const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+        await navigator.serviceWorker.ready;
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          alert('알림 권한이 허용되지 않았습니다. 기기 설정에서 알림을 허용해 주세요.');
+          return;
+        }
+        const vapid = await getOrCreateLocalVapidKeys();
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: b64uDecode(vapid.publicKey)
+          });
+        }
+        const subJson = sub.toJSON();
+        const bundle = {
+          v: 1,
+          label: navigator.platform || '내 스마트폰',
+          subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+          vapid
+        };
+        const code = 'ONH1:' + b64uEncode(new TextEncoder().encode(JSON.stringify(bundle)));
+        localStorage.setItem('onh_pairing_code', code);
+        latestPairingCode = code;
+        document.getElementById('pairCodeBox').textContent = code;
+        document.getElementById('codeWrap').style.display = 'block';
+      } catch (err) {
+        alert('연결 코드 생성 오류: ' + (err.message || err));
+      }
+    };
+
+    document.getElementById('copyCodeBtn').onclick = async () => {
+      if (!latestPairingCode) return;
+      await navigator.clipboard.writeText(latestPairingCode);
+      const b = document.getElementById('copyCodeBtn');
+      b.textContent = '✅ 복사 완료! 옵시디언 설정창에 붙여넣으세요';
+      setTimeout(() => { b.textContent = '📋 연결 코드 복사하기'; }, 2000);
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+      navigator.serviceWorker.addEventListener('message', () => renderItems());
+    }
+    renderItems();
+  </script>
+</body>
+</html>
