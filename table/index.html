@@ -30,14 +30,26 @@
     .room-list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:5px; }
     .r-item { display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; background:rgba(255,255,255,0.02); }
     .r-item:hover { background:rgba(255,255,255,0.05); }
+    .r-item.pinned { background:rgba(245,158,11,0.06); border-color:rgba(245,158,11,0.28); }
     .r-item.active { background:rgba(16,185,129,0.14); border-color:rgba(16,185,129,0.38); }
     .r-ava { width:38px; height:38px; border-radius:12px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
     .r-main { flex:1; min-width:0; }
     .r-row1 { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:3px; }
+    .r-title-wrap { display:flex; align-items:center; gap:4px; min-width:0; flex:1; }
+    .r-pin-mark { font-size:12px; flex-shrink:0; line-height:1; }
     .r-title { font-size:14px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .r-row1-right { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; }
+    .r-state { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700; border-radius:999px; padding:1px 7px; line-height:1.35; white-space:nowrap; max-width:116px; overflow:hidden; text-overflow:ellipsis; }
+    .r-state.thinking { background:rgba(139,92,246,0.18); color:#c4b5fd; border:1px solid rgba(139,92,246,0.42); }
+    .r-state.writing { background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.42); }
+    .r-state-dot { width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0; animation:ltPulse 1.3s ease-in-out infinite; }
+    @keyframes ltPulse { 0%,100%{opacity:0.35;transform:scale(0.85);} 50%{opacity:1;transform:scale(1.15);} }
+    .r-pin-btn { background:transparent; border:1px solid transparent; border-radius:6px; padding:2px 5px; font-size:11.5px; line-height:1; cursor:pointer; opacity:0.35; color:var(--muted); flex-shrink:0; }
+    .r-pin-btn:hover { opacity:0.85; background:rgba(255,255,255,0.07); }
+    .r-pin-btn.active { opacity:1; color:#fbbf24; background:rgba(245,158,11,0.15); border-color:rgba(245,158,11,0.38); }
     .r-time { font-size:11px; color:var(--muted); flex-shrink:0; }
     .r-row2 { display:flex; justify-content:space-between; align-items:center; gap:6px; }
-    .r-prev { font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .r-prev { font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
     .r-badge { background:#ef4444; color:#fff; font-size:10.5px; font-weight:800; border-radius:999px; padding:1px 6px; flex-shrink:0; }
     .chat-pane { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
 
@@ -203,7 +215,13 @@
       syncTimer: null,
       syncInFlight: false,
       invokeLuki: false,
+      pinnedRoomIds: [],
       liveStreams: {},
+      roomTypers: {},
+      typerExpiryTimer: null,
+      localTypingTimer: null,
+      localTypingActiveRoom: '',
+      lastTypingSentAt: 0,
       pendingAtts: [],
       uploadingCount: 0,
       modalSoloMode: false
@@ -857,11 +875,93 @@
       renderMessages(forceScrollBottom);
     }
 
+    function getPinStorageKey() {
+      return 'lt_pins_' + (state.me?.id || state.preferredMemberId || 'default');
+    }
+    function savePinnedRoomsLocal() {
+      try { localStorage.setItem(getPinStorageKey(), JSON.stringify(state.pinnedRoomIds || [])); } catch (_) {}
+    }
+    function loadPinnedRoomsLocal() {
+      try {
+        const raw = localStorage.getItem(getPinStorageKey());
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) state.pinnedRoomIds = arr.filter(Boolean);
+        }
+      } catch (_) {}
+    }
+    function isRoomPinned(roomId) {
+      return Array.isArray(state.pinnedRoomIds) && state.pinnedRoomIds.includes(roomId);
+    }
+    async function togglePinRoom(roomId) {
+      const nextPinned = !isRoomPinned(roomId);
+      const cur = Array.isArray(state.pinnedRoomIds) ? state.pinnedRoomIds.slice() : [];
+      state.pinnedRoomIds = nextPinned ? [roomId, ...cur.filter(x => x !== roomId)] : cur.filter(x => x !== roomId);
+      savePinnedRoomsLocal();
+      renderRooms();
+      if (!sendWsJson({ type: 'pin_room', roomId, pinned: nextPinned })) {
+        apiFetch('/table/rooms/pin', { method: 'POST', body: JSON.stringify({ roomId, pinned: nextPinned }) }).catch(() => {});
+      }
+    }
+    function getActiveRoomTypers(roomId) {
+      const map = state.roomTypers[roomId];
+      if (!map) return [];
+      const now = Date.now();
+      const out = [];
+      for (const [mid, info] of Object.entries(map)) {
+        if (info && info.expiresAt > now) out.push(info.name || mid);
+        else delete map[mid];
+      }
+      return out;
+    }
+    function scheduleWebTyperCleanup() {
+      if (state.typerExpiryTimer) clearTimeout(state.typerExpiryTimer);
+      const now = Date.now();
+      let earliest = Infinity;
+      for (const map of Object.values(state.roomTypers)) {
+        for (const [mid, info] of Object.entries(map || {})) {
+          if (!info || info.expiresAt <= now) delete map[mid];
+          else if (info.expiresAt < earliest) earliest = info.expiresAt;
+        }
+      }
+      if (earliest < Infinity) {
+        state.typerExpiryTimer = setTimeout(() => {
+          state.typerExpiryTimer = null;
+          renderRooms();
+          scheduleWebTyperCleanup();
+        }, Math.max(150, earliest - now + 80));
+      }
+    }
+    function resolveWebRoomLiveState(r) {
+      const st = state.liveStreams[r.id];
+      if (st) {
+        const isWriting = st.phase === 'writing' || Boolean(String(st.text || '').trim());
+        return isWriting
+          ? { phase: 'writing', label: r.isPrivateSolo ? '✍️ 작성중' : '✍️ 루키 작성중' }
+          : { phase: 'thinking', label: r.isPrivateSolo ? '💭 생각중' : '💭 루키 생각중' };
+      }
+      const typers = getActiveRoomTypers(r.id);
+      if (typers.length > 0) {
+        const label = (r.members || []).length <= 2
+          ? ('✍️ ' + typers[0] + ' 작성중')
+          : ('✍️ ' + typers[0] + (typers.length > 1 ? (' 외 ' + (typers.length - 1)) : '') + ' 작성중');
+        return { phase: 'writing', label };
+      }
+      const chatInp = document.getElementById('chatInput');
+      if (state.activeRoomId === r.id && chatInp && chatInp.value.trim().length > 0) {
+        return { phase: 'writing', label: '✍️ 작성중' };
+      }
+      return null;
+    }
+
     function renderRooms() {
       syncTopbarRoomInfo();
       const box = document.getElementById('roomList');
       box.innerHTML = '';
       const sorted = state.rooms.slice().sort((a, b) => {
+        const pa = isRoomPinned(a.id);
+        const pb = isRoomPinned(b.id);
+        if (pa !== pb) return pa ? -1 : 1;
         const la = (a.messages && a.messages.length) ? (a.messages[a.messages.length - 1].createdAt || 0) : 0;
         const lb = (b.messages && b.messages.length) ? (b.messages[b.messages.length - 1].createdAt || 0) : 0;
         if (lb !== la) return lb - la;
@@ -870,28 +970,50 @@
       for (const r of sorted) {
         const dispTitle = r.isPrivateSolo && r.title === '나의 식탁방' ? '나의 식탁방 (1:1)' : r.title;
         if (state.roomSearch && !dispTitle.toLowerCase().includes(state.roomSearch)) continue;
+        const pinned = isRoomPinned(r.id);
         const lastM = (r.messages && r.messages.length) ? r.messages[r.messages.length - 1] : null;
         const unreadCnt = countMyUnreadInRoom(r);
         const ava = r.isPrivateSolo ? '🪶' : (r.type === 'living' ? '🏠' : ((r.members || []).length <= 2 ? '💬' : '👥'));
         const attPreview = (lastM && Array.isArray(lastM.attachments) && lastM.attachments.length > 0)
           ? ('📎 ' + lastM.attachments[0].name)
           : '';
-        const prevTxt = state.liveStreams[r.id]
-          ? '🪶 루키 답변 작성 중⋯'
-          : (lastM
-              ? ((lastM.role === 'assistant' ? '루키: ' : (lastM.senderName + ': ')) + (String(lastM.text || '').replace(/\s+/g, ' ').trim() || attPreview || '첨부파일').slice(0, 38))
-              : (r.isPrivateSolo ? '나와 루키의 일대일 대화방' : '대화를 시작해 보세요'));
+        // Never overwrite last message preview with thinking/writing status!
+        const prevTxt = lastM
+          ? ((lastM.role === 'assistant' ? '루키: ' : (lastM.senderName + ': ')) + (String(lastM.text || '').replace(/==([^=]+)==/g, '$1').replace(/\s+/g, ' ').trim() || attPreview || '첨부파일').slice(0, 44))
+          : (r.isPrivateSolo ? '나와 루키의 일대일 대화방' : '대화를 시작해 보세요');
+        const liveState = resolveWebRoomLiveState(r);
 
         const item = document.createElement('div');
-        item.className = 'r-item' + (state.viewMode === 'chat' && r.id === state.activeRoomId ? ' active' : '');
+        item.className = 'r-item'
+          + (pinned ? ' pinned' : '')
+          + (state.viewMode === 'chat' && r.id === state.activeRoomId ? ' active' : '');
         item.innerHTML = '<div class="r-ava">' + ava + '</div>'
           + '<div class="r-main">'
-          +   '<div class="r-row1"><span class="r-title"></span><span class="r-time"></span></div>'
+          +   '<div class="r-row1">'
+          +     '<div class="r-title-wrap">' + (pinned ? '<span class="r-pin-mark">📌</span>' : '') + '<span class="r-title"></span></div>'
+          +     '<div class="r-row1-right"><span class="r-state-slot"></span><span class="r-time"></span><button type="button" class="r-pin-btn' + (pinned ? ' active' : '') + '" title="' + (pinned ? '상단 고정 해제' : '상단에 고정') + '">📌</button></div>'
+          +   '</div>'
           +   '<div class="r-row2"><span class="r-prev"></span>' + (unreadCnt > 0 ? ('<span class="r-badge">' + unreadCnt + '</span>') : '') + '</div>'
           + '</div>';
         item.querySelector('.r-title').textContent = dispTitle;
         item.querySelector('.r-time').textContent = lastM ? fmtRoomTime(lastM.createdAt) : '';
         item.querySelector('.r-prev').textContent = prevTxt;
+        if (liveState) {
+          const stSlot = item.querySelector('.r-state-slot');
+          const pill = document.createElement('span');
+          pill.className = 'r-state ' + (liveState.phase === 'thinking' ? 'thinking' : 'writing');
+          const dot = document.createElement('span');
+          dot.className = 'r-state-dot';
+          const lbl = document.createElement('span');
+          lbl.textContent = liveState.label;
+          pill.append(dot, lbl);
+          stSlot.appendChild(pill);
+        }
+        const pinBtn = item.querySelector('.r-pin-btn');
+        pinBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          togglePinRoom(r.id);
+        };
         item.onclick = () => openRoom(r.id);
         box.appendChild(item);
       }
@@ -1124,6 +1246,10 @@
         if (!d || !d.ok) return false;
         if (d.me) state.me = d.me;
         if (Array.isArray(d.familyDirectory)) state.familyDirectory = d.familyDirectory;
+        if (Array.isArray(d.pinnedRoomIds)) {
+          state.pinnedRoomIds = d.pinnedRoomIds;
+          savePinnedRoomsLocal();
+        }
         if (d.vapidPublicKey) {
           state.vapidPublicKey = d.vapidPublicKey;
           localStorage.setItem('lt_vapid', d.vapidPublicKey);
@@ -1162,6 +1288,25 @@
             }
           }
           if (applyReadCursorsToRoom(lr, sr.readCursors)) changed = true;
+          if (Array.isArray(sr.activeTypers)) {
+            const now = Date.now();
+            const map = {};
+            for (const tp of sr.activeTypers) {
+              if (tp && tp.memberId && tp.memberId !== state.me?.id && tp.expiresAt > now) {
+                map[tp.memberId] = { name: tp.memberName || tp.memberId, expiresAt: tp.expiresAt };
+              }
+            }
+            state.roomTypers[lr.id] = map;
+            scheduleWebTyperCleanup();
+          }
+          if (sr.activeAssistantStream) {
+            state.liveStreams[lr.id] = {
+              phase: sr.activeAssistantStream.phase || 'thinking',
+              status: sr.activeAssistantStream.status || '루키가 생각을 정리하고 있어요...',
+              text: state.liveStreams[lr.id]?.text || ''
+            };
+            changed = true;
+          }
         }
 
         if (changed || !silent) {
@@ -1212,15 +1357,29 @@
               state.rooms.push(d);
               renderRooms();
             }
+          } else if (pkt.event === 'room_pin_updated') {
+            if (Array.isArray(d.pinnedRoomIds)) {
+              state.pinnedRoomIds = d.pinnedRoomIds;
+              savePinnedRoomsLocal();
+              renderRooms();
+            }
           } else if (pkt.event === 'assistant_start') {
-            state.liveStreams[d.roomId] = { status: '생각 정리 중...', text: '' };
+            state.liveStreams[d.roomId] = { phase: 'thinking', status: d.status || '루키가 생각을 정리하고 있어요...', text: '' };
             renderRooms();
             if (state.viewMode === 'chat' && d.roomId === state.activeRoomId) renderMessages(false);
           } else if (pkt.event === 'assistant_stream') {
-            state.liveStreams[d.roomId] = { status: d.status, text: d.text || '' };
+            const prevPhase = state.liveStreams[d.roomId]?.phase || '';
+            const nextPhase = d.phase || (String(d.text || '').trim() ? 'writing' : 'thinking');
+            state.liveStreams[d.roomId] = { phase: nextPhase, status: d.status, text: d.text || '' };
+            if (prevPhase !== nextPhase) renderRooms();
+            if (state.viewMode === 'chat' && d.roomId === state.activeRoomId) renderMessages(false);
+          } else if (pkt.event === 'assistant_error') {
+            delete state.liveStreams[d.roomId];
+            renderRooms();
             if (state.viewMode === 'chat' && d.roomId === state.activeRoomId) renderMessages(false);
           } else if (pkt.event === 'message') {
             delete state.liveStreams[d.roomId];
+            if (d.senderId && state.roomTypers[d.roomId]) delete state.roomTypers[d.roomId][d.senderId];
             if (upsertMessageInRoom(d)) {
               renderRooms();
               if (state.viewMode === 'chat' && d.roomId === state.activeRoomId && document.visibilityState === 'visible') {
@@ -1246,8 +1405,19 @@
               if (state.viewMode === 'chat' && r.id === state.activeRoomId) renderMessages(false);
             }
           } else if (pkt.event === 'typing') {
-            if (state.viewMode === 'chat' && d.roomId === state.activeRoomId && d.memberId !== state.me?.id) {
-              document.getElementById('typingLbl').textContent = d.isTyping ? (d.memberName + ' 입력 중⋯') : '';
+            if (d.memberId && d.memberId !== state.me?.id) {
+              if (!state.roomTypers[d.roomId]) state.roomTypers[d.roomId] = {};
+              if (d.isTyping) {
+                state.roomTypers[d.roomId][d.memberId] = { name: d.memberName || d.memberId, expiresAt: Date.now() + 5200 };
+                scheduleWebTyperCleanup();
+              } else {
+                delete state.roomTypers[d.roomId][d.memberId];
+              }
+              renderRooms();
+              if (state.viewMode === 'chat' && d.roomId === state.activeRoomId) {
+                const activeNames = getActiveRoomTypers(d.roomId);
+                document.getElementById('typingLbl').textContent = activeNames.length > 0 ? (activeNames.join(', ') + ' 작성중⋯') : '';
+              }
             }
           }
         } catch (_) {}
@@ -1340,6 +1510,42 @@
       });
     }
 
+    const chatInpEl = document.getElementById('chatInput');
+    function stopWebLocalTyping(roomId) {
+      if (state.localTypingTimer) { clearTimeout(state.localTypingTimer); state.localTypingTimer = null; }
+      if (state.localTypingActiveRoom && (!roomId || state.localTypingActiveRoom === roomId)) {
+        const prevR = state.localTypingActiveRoom;
+        state.localTypingActiveRoom = '';
+        state.lastTypingSentAt = 0;
+        const rObj = state.rooms.find(x => x.id === prevR);
+        if (rObj && !rObj.isPrivateSolo) {
+          sendWsJson({ type: 'typing', roomId: prevR, isTyping: false });
+        }
+      }
+    }
+    chatInpEl.addEventListener('input', () => {
+      if (!state.activeRoomId) return;
+      const hasVal = chatInpEl.value.trim().length > 0;
+      const rObj = state.rooms.find(x => x.id === state.activeRoomId);
+      if (!hasVal) {
+        stopWebLocalTyping(state.activeRoomId);
+        return;
+      }
+      if (rObj && !rObj.isPrivateSolo) {
+        const now = Date.now();
+        if (state.localTypingActiveRoom !== state.activeRoomId || now - state.lastTypingSentAt >= 2000) {
+          state.localTypingActiveRoom = state.activeRoomId;
+          state.lastTypingSentAt = now;
+          sendWsJson({ type: 'typing', roomId: state.activeRoomId, isTyping: true });
+        }
+        if (state.localTypingTimer) clearTimeout(state.localTypingTimer);
+        state.localTypingTimer = setTimeout(() => stopWebLocalTyping(state.activeRoomId), 3400);
+      }
+    });
+    chatInpEl.addEventListener('blur', () => {
+      if (state.activeRoomId) stopWebLocalTyping(state.activeRoomId);
+    });
+
     document.getElementById('sendBtn').onclick = async () => {
       if (state.uploadingCount > 0 || !state.activeRoomId) return;
       const ta = document.getElementById('chatInput');
@@ -1348,6 +1554,7 @@
       if (!txt && attIds.length === 0) return;
       const targetRoomId = state.activeRoomId;
       ta.value = '';
+      stopWebLocalTyping(targetRoomId);
       state.pendingAtts = [];
       renderPendingAtts();
       const room = state.rooms.find(r => r.id === targetRoomId);
@@ -1379,11 +1586,34 @@
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || '세션 만료');
       state.me = d.me;
+      loadPinnedRoomsLocal();
+      if (Array.isArray(d.pinnedRoomIds)) {
+        state.pinnedRoomIds = d.pinnedRoomIds;
+        savePinnedRoomsLocal();
+      }
       state.familyDirectory = d.familyDirectory || [];
       state.rooms = d.rooms || [];
       for (const rm of state.rooms) {
         applyReadCursorsToRoom(rm, rm.readCursors);
+        if (Array.isArray(rm.activeTypers)) {
+          const now = Date.now();
+          const map = {};
+          for (const tp of rm.activeTypers) {
+            if (tp && tp.memberId && tp.memberId !== state.me?.id && tp.expiresAt > now) {
+              map[tp.memberId] = { name: tp.memberName || tp.memberId, expiresAt: tp.expiresAt };
+            }
+          }
+          state.roomTypers[rm.id] = map;
+        }
+        if (rm.activeAssistantStream) {
+          state.liveStreams[rm.id] = {
+            phase: rm.activeAssistantStream.phase || 'thinking',
+            status: rm.activeAssistantStream.status || '루키가 생각을 정리하고 있어요...',
+            text: ''
+          };
+        }
       }
+      scheduleWebTyperCleanup();
       if (d.vapidPublicKey) {
         state.vapidPublicKey = d.vapidPublicKey;
         localStorage.setItem('lt_vapid', d.vapidPublicKey);
