@@ -1,3 +1,4 @@
+// Luki Notify Hub Service Worker v1.0.6 (NFC + Direct luki-chat deep link)
 const DB_NAME = 'obsidian_personal_notify_db';
 const DB_VERSION = 2;
 const STORE = 'items';
