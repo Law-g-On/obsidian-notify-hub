@@ -160,25 +160,44 @@
       return ak === 'luki-table' || Boolean(it.roomId) || ch.includes('식탁') || np.includes('루키의 식탁/');
     }
 
+    const IS_MOBILE_DEVICE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '')
+      || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+
+    function normalizeUnicodeSafe(val) {
+      const s = String(val || '').trim();
+      try { return s ? s.normalize('NFC') : ''; } catch (_) { return s; }
+    }
+
     function buildObsidianDeepLink(it) {
+      const normVault = normalizeUnicodeSafe(it.vault);
+      const normNote = normalizeUnicodeSafe(it.notePath);
+      const includeVault = Boolean(!IS_MOBILE_DEVICE && normVault);
+
       if (isTableNotificationItem(it)) {
         const qp = [];
-        if (it.vault) qp.push('vault=' + encodeURIComponent(it.vault));
+        if (includeVault) qp.push('vault=' + encodeURIComponent(normVault));
         if (it.roomId) qp.push('room=' + encodeURIComponent(it.roomId));
         if (it.msgId) qp.push('msg=' + encodeURIComponent(it.msgId));
-        if (it.notePath) qp.push('note=' + encodeURIComponent(it.notePath));
+        if (normNote) qp.push('note=' + encodeURIComponent(normNote));
         return 'obsidian://luki-table' + (qp.length ? ('?' + qp.join('&')) : '');
       }
-      if (isChatNotificationItem(it) || it.notePath || it.actionKind === 'approval') {
+      if (isChatNotificationItem(it) || it.actionKind === 'approval') {
         const qp = [];
-        if (it.vault) qp.push('vault=' + encodeURIComponent(it.vault));
+        if (includeVault) qp.push('vault=' + encodeURIComponent(normVault));
         if (it.actionKind) qp.push('actionKind=' + encodeURIComponent(it.actionKind));
-        else if (isChatNotificationItem(it)) qp.push('actionKind=luki-chat');
-        if (it.channel) qp.push('channel=' + encodeURIComponent(it.channel));
-        if (it.notePath) qp.push('note=' + encodeURIComponent(it.notePath));
+        else qp.push('actionKind=luki-chat');
+        if (it.channel) qp.push('channel=' + encodeURIComponent(normalizeUnicodeSafe(it.channel)));
+        if (normNote) qp.push('note=' + encodeURIComponent(normNote));
+        return 'obsidian://luki-chat' + (qp.length ? ('?' + qp.join('&')) : '');
+      }
+      if (normNote) {
+        const qp = [];
+        if (includeVault) qp.push('vault=' + encodeURIComponent(normVault));
+        if (it.channel) qp.push('channel=' + encodeURIComponent(normalizeUnicodeSafe(it.channel)));
+        qp.push('note=' + encodeURIComponent(normNote));
         return 'obsidian://notify-hub-open' + (qp.length ? ('?' + qp.join('&')) : '');
       }
-      return it.vault ? ('obsidian://open?vault=' + encodeURIComponent(it.vault)) : 'obsidian://open';
+      return includeVault ? ('obsidian://open?vault=' + encodeURIComponent(normVault)) : 'obsidian://open';
     }
 
     function b64uEncode(bytes) {
