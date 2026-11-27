@@ -151,10 +151,11 @@
         <div class="composer">
           <div id="pendingAttBar" style="display:none;flex-wrap:wrap;gap:4px;"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="display:flex;gap:5px;align-items:center;">
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
               <button class="btn-sm" id="lukiToggleBtn">🪶 @루키 부르기</button>
               <button class="btn-sm" id="attachBtn">📎 사진·문서</button>
-              <input type="file" id="filePicker" multiple style="display:none;" accept="image/*,.pdf,.txt,.md,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip">
+              <button class="btn-sm" id="micBtn" type="button">🎙️ 음성 입력</button>
+              <input type="file" id="filePicker" multiple style="display:none;" accept="image/*,.pdf,.txt,.md,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.html">
             </div>
             <span id="typingLbl" style="font-size:11px;color:#34d399;"></span>
           </div>
@@ -313,15 +314,32 @@
       throw new Error('유효한 입장 코드를 찾지 못했습니다. 옵시디언 [설정 ➔ 루키의 식탁]에서 [입장 코드 복사]를 눌러 붙여넣어 주세요 (LTBL1:... 또는 ltok_... 모두 가능).');
     }
 
-    async function decryptBeaconLineWithRawKey(lineStr, rawKeyBytes) {
-      const obj = JSON.parse(lineStr);
-      if (!obj.message || !obj.message.startsWith('LUKIBEACON1:')) return null;
-      const p = obj.message.split(':');
+    async function decryptRawBeaconCiphertext(cipherStr, rawKeyBytes) {
+      const s = String(cipherStr || '').trim();
+      if (!s.startsWith('LUKIBEACON1:')) return null;
+      const p = s.split(':');
       const iv = hexToBytes(p[1]), tag = hexToBytes(p[2]), ct = hexToBytes(p[3]);
       const comb = new Uint8Array(ct.length + tag.length);
       comb.set(ct, 0); comb.set(tag, ct.length);
       const ck = await crypto.subtle.importKey('raw', rawKeyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
       return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, comb)));
+    }
+
+    async function fetchStaticEncryptedBeaconDoc() {
+      const candidates = [
+        '../beacon.json?t=' + Date.now(),
+        'https://law-g-on.github.io/obsidian-notify-hub/beacon.json?t=' + Date.now()
+      ];
+      for (const u of candidates) {
+        try {
+          const r = await fetch(u, { cache: 'no-store' });
+          if (r.ok) {
+            const j = await r.json();
+            if (j && typeof j === 'object') return j;
+          }
+        } catch (_) {}
+      }
+      return null;
     }
 
     async function resolveGatewayFromInvite(rawInviteCode) {
@@ -336,17 +354,13 @@
           throw new Error('입장 코드 뒷부분이 중간에 잘렸습니다. 옵시디언 설정에서 [입장 코드 복사]를 다시 눌러 전체를 붙여넣어 주세요.');
         }
         gw = (meta.g || '').replace(/\/+$/, '');
-        if (meta.t && meta.k) {
+        if (meta.k) {
           try {
-            const r = await fetch('https://ntfy.sh/' + encodeURIComponent(meta.t) + '/json?poll=1&since=all');
-            if (r.ok) {
-              const lines = (await r.text()).trim().split('\n').reverse();
-              for (const ln of lines) {
-                try {
-                  const dec = await decryptBeaconLineWithRawKey(ln, hexToBytes(meta.k));
-                  if (dec && dec.url) { gw = dec.url.replace(/\/+$/, ''); break; }
-                } catch (_) {}
-              }
+            const bdoc = await fetchStaticEncryptedBeaconDoc();
+            const ciph = bdoc && (bdoc.tableBeacon || bdoc.beacon || bdoc.message);
+            if (ciph) {
+              const dec = await decryptRawBeaconCiphertext(ciph, hexToBytes(meta.k));
+              if (dec && dec.url) gw = dec.url.replace(/\/+$/, '');
             }
           } catch (_) {}
         }
@@ -356,22 +370,17 @@
           const topicHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('LUKI_TOK_TOPIC_V1|' + parsed.canonical)));
           const keyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('LUKI_TOK_KEY_V1|' + parsed.canonical)));
           const topic = 'luki-tok-beacon-' + bytesToHex(topicHash).slice(0, 24);
-          const r = await fetch('https://ntfy.sh/' + encodeURIComponent(topic) + '/json?poll=1&since=all');
-          if (r.ok) {
-            const lines = (await r.text()).trim().split('\n').reverse();
-            for (const ln of lines) {
-              try {
-                const dec = await decryptBeaconLineWithRawKey(ln, keyBytes);
-                if (dec && dec.url) {
-                  gw = dec.url.replace(/\/+$/, '');
-                  if (dec.memberId) {
-                    state.preferredMemberId = dec.memberId;
-                    localStorage.setItem('lt_pref_member', dec.memberId);
-                  }
-                  if (dec.inviteCode) state.canonicalInvite = dec.inviteCode;
-                  break;
-                }
-              } catch (_) {}
+          const bdoc = await fetchStaticEncryptedBeaconDoc();
+          const tokCiph = bdoc && bdoc.tokenBeacons && bdoc.tokenBeacons[topic];
+          if (tokCiph) {
+            const dec = await decryptRawBeaconCiphertext(tokCiph, keyBytes);
+            if (dec && dec.url) {
+              gw = dec.url.replace(/\/+$/, '');
+              if (dec.memberId) {
+                state.preferredMemberId = dec.memberId;
+                localStorage.setItem('lt_pref_member', dec.memberId);
+              }
+              if (dec.inviteCode) state.canonicalInvite = dec.inviteCode;
             }
           }
         } catch (_) {}
@@ -853,6 +862,14 @@
         r.messages.push(copy);
         r.messages.sort((a, b) => (a.seq || a.createdAt || 0) - (b.seq || b.createdAt || 0));
       }
+      try {
+        const recentToKeep = r.messages.slice(-45);
+        localStorage.setItem('lt_room_msgs_' + r.id, JSON.stringify(recentToKeep));
+        if (r.messages.length > 24) {
+          const older = r.messages.slice(0, -16).map(m => (m.role === 'assistant' ? '루키' : m.senderName) + ': ' + String(m.text || '').replace(/\s+/g, ' ').slice(0, 70)).join(' / ').slice(-1200);
+          if (older) localStorage.setItem('lt_room_summary_' + r.id, older);
+        }
+      } catch (_) {}
       return true;
     }
 
@@ -1349,12 +1366,20 @@
       }
     }
 
-    function connectWs() {
+    async function connectWs() {
       if (!state.sessionToken || !state.gatewayUrl) return;
       if (state.ws && state.ws.readyState <= 1) return;
       const wsBase = state.gatewayUrl.replace(/^http/, 'ws');
       const activeParam = (state.viewMode === 'chat' && state.activeRoomId) ? ('&activeRoom=' + encodeURIComponent(state.activeRoomId)) : '';
-      const ws = new WebSocket(wsBase + '/table/ws?session=' + encodeURIComponent(state.sessionToken) + activeParam);
+      let authQuery = 'session=' + encodeURIComponent(state.sessionToken);
+      try {
+        const tr = await apiFetch('/table/ws-ticket', { method: 'POST', body: '{}' });
+        if (tr.ok) {
+          const td = await tr.json();
+          if (td && td.ok && td.ticket) authQuery = 'ticket=' + encodeURIComponent(td.ticket);
+        }
+      } catch (_) {}
+      const ws = new WebSocket(wsBase + '/table/ws?' + authQuery + activeParam);
       state.ws = ws;
       ws.onopen = () => {
         document.getElementById('wsDot').style.color = '#10b981';
@@ -1453,6 +1478,56 @@
       b.style.borderColor = state.invokeLuki ? '#10b981' : '';
     }
     document.getElementById('lukiToggleBtn').onclick = () => { state.invokeLuki = !state.invokeLuki; syncLukiBtn(); };
+
+    // 🎙️ 음성 말하기 입력 (Web Speech API)
+    (function setupWebVoiceDictation() {
+      const micBtn = document.getElementById('micBtn');
+      if (!micBtn) return;
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        micBtn.onclick = () => alert('이 브라우저는 음성 받아쓰기를 지원하지 않습니다. 키보드의 마이크 단추를 이용해 주세요.');
+        return;
+      }
+      let rec = null;
+      let active = false;
+      let baseText = '';
+      micBtn.onclick = () => {
+        const ta = document.getElementById('chatInput');
+        if (active && rec) {
+          try { rec.stop(); } catch (_) {}
+          return;
+        }
+        rec = new SpeechRec();
+        rec.lang = 'ko-KR';
+        rec.continuous = true;
+        rec.interimResults = true;
+        baseText = ta.value ? (ta.value.trimEnd() + ' ') : '';
+        active = true;
+        micBtn.textContent = '🛑 듣는 중...';
+        micBtn.style.borderColor = '#ef4444';
+        micBtn.style.color = '#fca5a5';
+        rec.onresult = (ev) => {
+          let finalPart = '';
+          let interimPart = '';
+          for (let i = 0; i < ev.results.length; i++) {
+            const tr = ev.results[i][0]?.transcript || '';
+            if (ev.results[i].isFinal) finalPart += tr + ' ';
+            else interimPart += tr;
+          }
+          ta.value = (baseText + finalPart + interimPart).trimStart();
+          ta.dispatchEvent(new Event('input'));
+        };
+        const finishMic = () => {
+          active = false;
+          micBtn.textContent = '🎙️ 음성 입력';
+          micBtn.style.borderColor = '';
+          micBtn.style.color = '';
+        };
+        rec.onerror = finishMic;
+        rec.onend = finishMic;
+        try { rec.start(); } catch (_) { finishMic(); }
+      };
+    })();
 
     document.getElementById('attachBtn').onclick = () => document.getElementById('filePicker').click();
     document.getElementById('filePicker').onchange = async (ev) => {
@@ -1589,9 +1664,14 @@
       const invoke = state.invokeLuki || Boolean(room?.isPrivateSolo);
       if (!room?.isPrivateSolo) { state.invokeLuki = false; syncLukiBtn(); }
       try {
+        const recentHistory = invoke && Array.isArray(room?.messages)
+          ? room.messages.slice(-20).map(x => ({ id: x.id, senderName: x.senderName, text: x.text, createdAt: x.createdAt }))
+          : [];
+        let roomArchiveSummary = '';
+        try { roomArchiveSummary = localStorage.getItem('lt_room_summary_' + targetRoomId) || ''; } catch (_) {}
         const r = await apiFetch('/table/message', {
           method: 'POST',
-          body: JSON.stringify({ roomId: targetRoomId, text: txt, attachmentIds: attIds, invokeLuki: invoke })
+          body: JSON.stringify({ roomId: targetRoomId, text: txt, attachmentIds: attIds, invokeLuki: invoke, recentHistory, roomArchiveSummary })
         });
         const d = await r.json().catch(() => null);
         if (d && d.ok && d.message) {
@@ -1622,6 +1702,22 @@
       state.familyDirectory = d.familyDirectory || [];
       state.rooms = d.rooms || [];
       for (const rm of state.rooms) {
+        try {
+          const cachedMsgsRaw = localStorage.getItem('lt_room_msgs_' + rm.id);
+          if (cachedMsgsRaw) {
+            const cachedArr = JSON.parse(cachedMsgsRaw);
+            if (Array.isArray(cachedArr) && cachedArr.length > 0) {
+              const curIds = new Set((rm.messages || []).map(x => x.id));
+              for (const cm of cachedArr) {
+                if (cm && cm.id && !curIds.has(cm.id)) {
+                  rm.messages.push(cm);
+                  curIds.add(cm.id);
+                }
+              }
+              rm.messages.sort((a, b) => (a.seq || a.createdAt || 0) - (b.seq || b.createdAt || 0));
+            }
+          }
+        } catch (_) {}
         applyReadCursorsToRoom(rm, rm.readCursors);
         if (Array.isArray(rm.activeTypers)) {
           const now = Date.now();
