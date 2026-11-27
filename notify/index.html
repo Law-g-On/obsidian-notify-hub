@@ -59,6 +59,17 @@
     .title { font-size:14.8px; font-weight:700; margin-bottom:5px; line-height:1.36; word-break:keep-all; }
     .body { font-size:13.3px; color:#cbd5e1; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
     .cta-wrap { margin-top:11px; display:flex; flex-direction:column; gap:7px; }
+    .reply-panel { margin-top:10px; padding:10px 11px; border-radius:12px; background:rgba(15,23,42,0.85); border:1px solid rgba(245,158,11,0.38); display:flex; flex-direction:column; gap:8px; cursor:default; }
+    .reply-panel-hdr { font-size:11.5px; font-weight:700; color:#fcd34d; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+    .reply-btn-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .reply-act-btn { flex:1; min-width:96px; border:none; border-radius:9px; padding:9px 10px; font-size:12.5px; font-weight:800; cursor:pointer; }
+    .reply-act-btn.approve { background:#10b981; color:#042f2e; }
+    .reply-act-btn.reject { background:rgba(255,255,255,0.1); color:#f8fafc; border:1px solid var(--border); }
+    .reply-act-btn.cancel { background:rgba(239,68,68,0.18); color:#fecaca; border:1px solid rgba(239,68,68,0.45); }
+    .reply-opt-chip { background:rgba(56,189,248,0.14); color:#bae6fd; border:1px solid rgba(56,189,248,0.38); border-radius:8px; padding:7px 10px; font-size:12px; font-weight:700; cursor:pointer; text-align:left; }
+    .reply-input-row { display:flex; gap:6px; align-items:center; }
+    .reply-inp { flex:1; background:#090b10; color:var(--text); border:1px solid var(--border); border-radius:9px; padding:8px 10px; font-size:13px; outline:none; }
+    .reply-done-pill { margin-top:9px; padding:8px 11px; border-radius:10px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.38); color:#6ee7b7; font-size:12px; font-weight:700; }
     .hint { font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 10px 0; }
 
     .undo-bar { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,12px) + 14px); transform:translateX(-50%) translateY(90px); background:#1e293b; border:1px solid rgba(255,255,255,0.16); color:var(--text); padding:10px 14px; border-radius:12px; display:flex; align-items:center; gap:12px; font-size:13px; box-shadow:0 12px 28px rgba(0,0,0,0.5); z-index:999; opacity:0; pointer-events:none; transition:transform 0.22s ease, opacity 0.22s ease; white-space:nowrap; }
@@ -414,7 +425,7 @@
       let axisLocked = false;
 
       const onStart = (clientX, clientY, targetEl) => {
-        if (targetEl && targetEl.closest('button, select')) return;
+        if (targetEl && targetEl.closest('button, select, input, textarea, .reply-panel')) return;
         closeOpenSwipeRow(rowEl);
         startX = clientX;
         startY = clientY;
@@ -645,6 +656,156 @@
         bd.textContent = it.body || '';
 
         div.append(meta, tt, bd);
+
+        if (it.repliedSummary) {
+          const donePill = document.createElement('div');
+          donePill.className = 'reply-done-pill';
+          donePill.textContent = '✅ 알림함 즉시 응답 완료: ' + it.repliedSummary;
+          div.appendChild(donePill);
+        } else if (it.replyMeta && it.replyMeta.actionToken && it.replyMeta.gatewayUrl) {
+          const rm = it.replyMeta;
+          const panel = document.createElement('div');
+          panel.className = 'reply-panel';
+          panel.onclick = (ev) => ev.stopPropagation();
+
+          const hdr = document.createElement('div');
+          hdr.className = 'reply-panel-hdr';
+          hdr.textContent = rm.waitKind === 'question'
+            ? '💬 옵시디언을 열지 않고 여기서 바로 답변·지시하기 (무한 대기 중 · 토큰 소모 0)'
+            : '🔐 옵시디언을 열지 않고 여기서 바로 승인·취소하기 (무한 대기 중 · 토큰 소모 0)';
+          panel.appendChild(hdr);
+
+          const submitActionToGateway = async (decision, answerText, summaryLabel) => {
+            const gw = String(rm.gatewayUrl || '').replace(/\/+$/, '');
+            if (!gw) return;
+            try {
+              panel.querySelectorAll('button, input').forEach(el => { el.disabled = true; });
+              const resp = await fetch(gw + '/notify/action-respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  actionToken: rm.actionToken,
+                  decision,
+                  answerText: answerText || ''
+                })
+              });
+              const rj = await resp.json().catch(() => ({}));
+              if (!resp.ok || !rj.ok) {
+                throw new Error(rj.error || ('HTTP ' + resp.status));
+              }
+              let db = null;
+              try {
+                db = await openDb();
+                const updated = Object.assign({}, it, { repliedSummary: summaryLabel, repliedAt: Date.now() });
+                await new Promise((res) => {
+                  const tx = db.transaction(STORE, 'readwrite');
+                  tx.objectStore(STORE).put(updated);
+                  tx.oncomplete = () => res();
+                  tx.onerror = () => res();
+                });
+              } finally {
+                try { db?.close(); } catch (_) {}
+              }
+              await renderItems();
+            } catch (err) {
+              panel.querySelectorAll('button, input').forEach(el => { el.disabled = false; });
+              alert('원격 응답 전달 실패: ' + (err.message || err));
+            }
+          };
+
+          if (rm.waitKind === 'question') {
+            if (Array.isArray(rm.options) && rm.options.length > 0) {
+              const optRow = document.createElement('div');
+              optRow.className = 'reply-btn-row';
+              rm.options.forEach((optTxt) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'reply-opt-chip';
+                chip.textContent = String(optTxt);
+                chip.onclick = (ev) => {
+                  ev.stopPropagation();
+                  submitActionToGateway('answer', String(optTxt), String(optTxt).slice(0, 40));
+                };
+                optRow.appendChild(chip);
+              });
+              panel.appendChild(optRow);
+            }
+            const inpRow = document.createElement('div');
+            inpRow.className = 'reply-input-row';
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.className = 'reply-inp';
+            inp.placeholder = '루키에게 직접 답변·추가 지시 적기...';
+            const sendAnsBtn = document.createElement('button');
+            sendAnsBtn.type = 'button';
+            sendAnsBtn.className = 'reply-act-btn approve';
+            sendAnsBtn.style.flex = '0 0 auto';
+            sendAnsBtn.textContent = '📨 답장 전송';
+            sendAnsBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              const val = inp.value.trim();
+              if (!val) { inp.focus(); return; }
+              submitActionToGateway('answer', val, val.slice(0, 40));
+            };
+            inp.addEventListener('keydown', (ke) => {
+              if (ke.key === 'Enter') { ke.preventDefault(); sendAnsBtn.click(); }
+            });
+            inpRow.append(inp, sendAnsBtn);
+            panel.appendChild(inpRow);
+
+            const cancelRow = document.createElement('div');
+            cancelRow.className = 'reply-btn-row';
+            const cancelJobBtn = document.createElement('button');
+            cancelJobBtn.type = 'button';
+            cancelJobBtn.className = 'reply-act-btn cancel';
+            cancelJobBtn.textContent = '🛑 이 작업 즉시 취소 (도쿄 RAM 비우기)';
+            cancelJobBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              submitActionToGateway('cancel_job', '', '작업 취소 및 RAM 즉시 소거');
+            };
+            cancelRow.appendChild(cancelJobBtn);
+            panel.appendChild(cancelRow);
+          } else {
+            if (rm.allowApprove === false) {
+              const warn = document.createElement('div');
+              warn.style.cssText = 'font-size:11.5px;color:#cbd5e1;';
+              warn.textContent = '※ 이 작업은 맥북 Touch ID 생체인증이 필수이므로 승인은 맥북에서, 거절·취소는 여기서 바로 하실 수 있어요.';
+              panel.appendChild(warn);
+            }
+            const btnRow = document.createElement('div');
+            btnRow.className = 'reply-btn-row';
+            if (rm.allowApprove !== false) {
+              const appBtn = document.createElement('button');
+              appBtn.type = 'button';
+              appBtn.className = 'reply-act-btn approve';
+              appBtn.textContent = '✅ 승인하여 진행';
+              appBtn.onclick = (ev) => {
+                ev.stopPropagation();
+                submitActionToGateway('approve', '', '승인 완료');
+              };
+              btnRow.appendChild(appBtn);
+            }
+            const rejBtn = document.createElement('button');
+            rejBtn.type = 'button';
+            rejBtn.className = 'reply-act-btn reject';
+            rejBtn.textContent = '✕ 거절';
+            rejBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              submitActionToGateway('reject', '', '거절 처리');
+            };
+            const canBtn = document.createElement('button');
+            canBtn.type = 'button';
+            canBtn.className = 'reply-act-btn cancel';
+            canBtn.textContent = '🛑 작업 취소(RAM 소거)';
+            canBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              submitActionToGateway('cancel_job', '', '작업 취소 및 RAM 소거');
+            };
+            btnRow.append(rejBtn, canBtn);
+            panel.appendChild(btnRow);
+          }
+          div.appendChild(panel);
+        }
 
         const deepHref = buildObsidianDeepLink(it);
         const ctaWrap = document.createElement('div');
