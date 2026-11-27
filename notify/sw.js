@@ -1,4 +1,4 @@
-// Luki Notify Hub Service Worker v1.0.6 (NFC + Direct luki-chat deep link)
+// Luki Notify Hub Service Worker v1.0.8 (NFC + Direct luki-chat deep link + Bidirectional Human-Wait Action Token)
 const DB_NAME = 'obsidian_personal_notify_db';
 const DB_VERSION = 2;
 const STORE = 'items';
@@ -90,6 +90,7 @@ self.addEventListener('push', (event) => {
     actionKind: data.actionKind || '',
     roomId: data.roomId || '',
     msgId: data.msgId || '',
+    replyMeta: (data.replyMeta && typeof data.replyMeta === 'object') ? data.replyMeta : null,
     ts: data.ts || Date.now(),
     pinned: Boolean(data.pinned),
     pinnedAt: data.pinned ? Date.now() : 0,
